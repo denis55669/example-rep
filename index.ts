@@ -1,17 +1,16 @@
 import { GameSDK, ItemSDK, Menu, ImageData, EventsSDK } from "github.com/octarine-public/wrapper/index";
 
-// --- MENU ---
-const MyScripts = Menu.AddEntryDeep(["Custom Scripts", "Denis"])
-const ArmletNode = MyScripts.AddNode("Armlet Abuse", ImageData.Icons.item_armlet)
+// --- СОЗДАНИЕ МЕНЮ (Как в примере abuse-midas) ---
+const Root = Menu.AddEntryDeep(["Custom Scripts", "Denis Abuse"])
+const ArmletNode = Root.AddNode("Armlet Abuse", ImageData.Icons.item_armlet)
 
-const IsEnabled = ArmletNode.AddToggle("Enabled", true)
-const HpThreshold = ArmletNode.AddSlider("HP Threshold", 300, 50, 600, 10)
-const CancelAttack = ArmletNode.AddToggle("Cancel Attack", true)
-const EnemyCheck = ArmletNode.AddToggle("Enemy Check", true)
+const Enabled = ArmletNode.AddToggle("Enabled", true)
+const Threshold = ArmletNode.AddSlider("HP Threshold", 300, 50, 600, 10)
+const StopAttack = ArmletNode.AddToggle("Stop Attack on Abuse", true)
 
-// --- LOGIC ---
+// --- ЛОГИКА АБУЗА ---
 EventsSDK.on("GameTick", () => {
-    if (!IsEnabled.Value) return;
+    if (!Enabled.Value) return;
 
     const me = GameSDK.GetLocalPlayer();
     if (!me || !me.IsAlive()) return;
@@ -22,20 +21,16 @@ EventsSDK.on("GameTick", () => {
     const health = me.GetHealth();
     const isToggled = ItemSDK.IsToggled(armlet);
 
-    let shouldAbuse = health <= HpThreshold.Value;
-    
-    if (EnemyCheck.Value) {
-        const enemies = GameSDK.getHeroes(true, true).filter(h => 
-            !h.isSameTeam(me) && h.isAlive() && h.getDistance(me) <= 1200
-        );
-        if (enemies.length === 0 && health > 150) shouldAbuse = false;
-    }
-
-    if (shouldAbuse && isToggled) {
-        if (CancelAttack.Value) {
+    // Если здоровья мало — запускаем абуз
+    if (health <= Threshold.Value && isToggled) {
+        
+        // Останавливаем атаку, чтобы не сбили абуз (mc_stop)
+        if (StopAttack.Value) {
             GameSDK.ExecuteCommand("mc_stop");
         }
-        ItemSDK.UseItem(armlet);
-        ItemSDK.UseItem(armlet);
+
+        // Мгновенное выключение и включение
+        ItemSDK.UseItem(armlet); // Off
+        ItemSDK.UseItem(armlet); // On
     }
 });
