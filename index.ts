@@ -1,4 +1,5 @@
 import { EventsSDK, GameSDK, ItemSDK, Menu, ImageData } from "github.com/octarine-public/wrapper/index"
+//
 
 const MyScripts = Menu.AddEntryDeep(["Custom Scripts", "Денис"])
 const ArmletNode = MyScripts.AddNode("Абуз Армлета", ImageData.Icons.item_armlet)
