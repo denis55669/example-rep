@@ -1,10 +1,11 @@
 import {
     EventsSDK,
     LocalPlayer,
-    Menu
+    Menu,
+    Input // Додаємо систему вводу
 } from "github.com/octarine-public/wrapper/index"
 
-// --- МЕНЮ ---
+// --- МЕНЮ (як на твому скріні) ---
 const Entry = Menu.AddEntry("Денис")
 const AutoArmletToggle = Entry.AddToggle("Авто-Армлет", true)
 const HpSlider = Entry.AddSlider("Поріг ХП Армлет", 200, 800, 450)
@@ -13,31 +14,29 @@ const HpSlider = Entry.AddSlider("Поріг ХП Армлет", 200, 800, 450)
 EventsSDK.on("PostDataUpdate", () => {
     const MyHero = LocalPlayer?.Hero
     
-    // Перевірки
     if (!AutoArmletToggle.value || MyHero === undefined || !MyHero.IsAlive) {
         return
     }
 
-    // Шукаємо армлет
     const armlet = MyHero.GetItemByName("item_armlet")
     
-    if (armlet !== undefined && armlet.CanBeCasted()) {
+    if (armlet !== undefined) {
         const currentHp = MyHero.Health
         const isUnholy = MyHero.HasModifier("modifier_item_armlet_unholy_strength")
 
-        // Якщо ХП впало і немає апарата
+        // Якщо ХП менше порогу
         if (currentHp <= HpSlider.value && !MyHero.HasModifier("modifier_ice_blast")) {
             
+            // Натискаємо клавішу Z (код клавіші 90)
             if (isUnholy) {
-                // Використовуємо метод castNoTarget (з маленької) або CastNoTarget (з великої)
-                // Спробуємо через загальну команду героя
-                MyHero.CastNoTarget(armlet)
-                MyHero.CastNoTarget(armlet)
+                // Швидкий подвійний клік по кнопці Z
+                Input.ExecuteCommand("bind z"); 
+                Input.ExecuteCommand("bind z");
             } else {
-                MyHero.CastNoTarget(armlet)
+                Input.ExecuteCommand("bind z");
             }
         }
     }
 })
 
-console.log("Скрипт Дениса: Спроба через CastNoTarget");
+console.log("Скрипт Дениса: Спроба через емуляцію кнопки Z");
