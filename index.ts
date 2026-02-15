@@ -2,48 +2,96 @@ import {
     EventsSDK,
     LocalPlayer,
     Menu,
-    Vector3
+    Vector3,
+    EntityManager,
+    Player,
+    Enum
 } from "github.com/octarine-public/wrapper/index"
 
-// --- МЕНЮ З ІКОНКОЮ ТРАВЕЛІВ ---
-const Main = Menu.AddEntry("Auto Feed Ultra", "panorama/images/items/travel_boots_png.vtex_c");
-const FeedDire = Main.AddToggle("ФІД ЗА DIRE (ТЬМА)", false);
-const FeedRadiant = Main.AddToggle("ФІД ЗА RADIANT (СВІТЛО)", false);
+// --- В КЛАДКА "УТИЛІТИ" (Denis Utilities) ---
+// Іконка шестерні для утиліт
+const Utils = Menu.AddEntry("Denis Utilities", "panorama/images/hud/reborn/settings_icon_psd.vtex_c");
 
-let lastF = 0;
-let fDelay = 5000;
+// --- ПІДРОЗДІЛ "GRIEF LORD" ---
+// Іконка Рапіри (найсмішніша для фіду)
+const Feeder = Utils.AddEntry("Grief Lord", "panorama/images/items/divine_rapier_png.vtex_c");
+
+// Налаштування
+const FeedHero = Feeder.AddToggle("1. Фід Героєм", false);
+const FeedCour = Feeder.AddToggle("2. Фід Курами", false);
+const FeedAllies = Feeder.AddToggle("3. Фід Тіммейтами (Shared/Leavers)", false);
+const Side = Feeder.AddList("Куди фідити?", ["ворогам RADIANT", "ворогам DIRE"], 1);
+
+let lastOrder = 0;
 
 EventsSDK.on("PostDataUpdate", () => {
     const Me = LocalPlayer?.Hero;
     if (!Me || !Me.IsAlive) return;
     const now = Date.now();
 
-    // Перевірка затримки (випадкова пауза 4-7 секунд, щоб було менше підозр)
-    if (now - lastF > fDelay) {
-        lastF = now;
-        fDelay = Math.floor(Math.random() * 3000 + 4000);
-
-        // ЯКЩО ТИ ЗА DIRE (ТЬМА) -> Біжиш на фонтан Radiant (Світлих)
-        if (FeedDire.value) {
-            const target = new Vector3(
-                -7200 + (Math.random() * 400 - 200), 
-                -6600 + (Math.random() * 400 - 200), 
-                384
-            );
-            // @ts-ignore
-            Me.MoveTo(target);
-        } 
-        // ЯКЩО ТИ ЗА RADIANT (СВІТЛО) -> Біжиш на фонтан Dire (Тьми)
-        else if (FeedRadiant.value) {
-            const target = new Vector3(
-                7200 + (Math.random() * 400 - 200), 
-                6500 + (Math.random() * 400 - 200), 
-                384
-            );
-            // @ts-ignore
-            Me.MoveTo(target);
+    // Виконуємо наказ раз на 3 секунди (щоб не лагало від кількості юнітів)
+    if (now - lastOrder > 3000) {
+        
+        // 1. Визначаємо координати ворожого фонтану
+        let targetPos: Vector3;
+        if (Side.value === 0) { // Radiant
+            targetPos = new Vector3(-7200, -6600, 384);
+        } else { // Dire
+            targetPos = new Vector3(7200, 6500, 384);
         }
+
+        // Додаємо рандом, щоб не бігли "паровозиком"
+        targetPos.x += (Math.random() * 600 - 300);
+        targetPos.y += (Math.random() * 600 - 300);
+
+        // 2. Збираємо армію для фіду
+        // @ts-ignore
+        if (FeedHero.value) {
+            MoveUnit(Me, targetPos);
+        }
+
+        // Фід Курами
+        if (FeedCour.value) {
+            const couriers = EntityManager.GetEntitiesByClass("npc_dota_courier");
+            for (const cour of couriers) {
+                // Якщо це наш кур'єр і він живий
+                if (cour.IsMyTeam && cour.IsAlive) {
+                    MoveUnit(cour, targetPos);
+                }
+            }
+        }
+
+        // Фід Тіммейтами (Тільки якщо дали контроль або лівнули)
+        if (FeedAllies.value) {
+            const heroes = EntityManager.GetEntitiesByClass("npc_dota_hero_*");
+            for (const hero of heroes) {
+                // Якщо це союзник, живий, не я, і я можу ним керувати (Controllable)
+                if (hero.IsMyTeam && hero.IsAlive && !hero.IsMe && hero.IsControllable) {
+                    MoveUnit(hero, targetPos);
+                }
+            }
+        }
+
+        lastOrder = now;
     }
 });
 
-console.log("Denis Feed Ultra Loaded!");
+// Функція примусового руху через "Мозок" гри
+function MoveUnit(unit: any, pos: Vector3) {
+    // @ts-ignore
+    if (unit && pos) {
+        // Використовуємо PrepareOrder - це найсильніший наказ
+        Player.PrepareOrder(
+            LocalPlayer.RawPlayer,
+            Enum.UnitOrder.DOTA_UNIT_ORDER_MOVE_TO_POSITION,
+            0,
+            pos,
+            0,
+            unit, // Кого відправляємо
+            false,
+            true
+        );
+    }
+}
+
+console.log("Grief Lord Loaded in Utilities!");
