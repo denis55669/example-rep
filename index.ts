@@ -2,20 +2,14 @@ import {
     EventsSDK,
     LocalPlayer,
     Menu,
-    Vector3,
-    Player,
-    Enum
+    Vector3
 } from "github.com/octarine-public/wrapper/index"
 
-// --- МЕНЮ ---
-const Root = Menu.AddEntry("Denis_Scripts_V18", "panorama/images/items/travel_boots_png.vtex_c");
-
-const FeedFolder = Root.AddEntry("Auto Feeder");
-const FeedDire = FeedFolder.AddToggle("Фід за DIRE (ТЬМА)", false);
-const FeedRad = FeedFolder.AddToggle("Фід за RADIANT (СВІТЛО)", false);
-
-const ChatFolder = Root.AddEntry("Chat Spam");
-const RollSpam = ChatFolder.AddToggle("Спам /roll", false);
+// Створюємо меню без зайвих наворотів
+const Main = Menu.AddEntry("Denis_V19");
+const FeedD = Main.AddToggle("1. ФІД ЗА DIRE", false);
+const FeedR = Main.AddToggle("2. ФІД ЗА RADIANT", false);
+const Roll = Main.AddToggle("3. СПАМ ROLL", false);
 
 let lastF = 0;
 let lastR = 0;
@@ -25,30 +19,29 @@ EventsSDK.on("PostDataUpdate", () => {
     if (!Me || !Me.IsAlive) return;
     const now = Date.now();
 
-    // 1. СИЛОВИЙ ФІД (Через PrepareOrder)
-    if (now - lastF > 3000) {
-        let targetPos: Vector3 | null = null;
-
-        if (FeedDire.value) {
-            targetPos = new Vector3(-7200, -6600, 384); // На фонтан Світлих
-        } else if (FeedRad.value) {
-            targetPos = new Vector3(7200, 6500, 384);   // На фонтан Тьми
-        }
-
-        if (targetPos) {
-            // Використовуємо прямий наказ гравця, який неможливо заблокувати
-            Player.PrepareOrder(LocalPlayer.RawPlayer, Enum.UnitOrder.DOTA_UNIT_ORDER_MOVE_TO_POSITION, 0, targetPos, 0, Me, false, true);
-            lastF = now;
-        }
-    }
-
-    // 2. СПАМ /roll
-    if (RollSpam.value && now - lastR > 2500) {
+    // СПАМ /roll
+    if (Roll.value && now - lastR > 2500) {
         lastR = now;
-        // Спробуємо через інший метод виконання команди
         // @ts-ignore
         EventsSDK.ExecuteCommand("say /roll");
     }
+
+    // ФІДЕР (простий метод)
+    if (now - lastF > 5000) {
+        if (FeedD.value) {
+            // Біжимо на фонтан Radiant
+            const target = new Vector3(-7200, -6600, 384);
+            // @ts-ignore
+            Me.MoveTo(target);
+            lastF = now;
+        } else if (FeedR.value) {
+            // Біжимо на фонтан Dire
+            const target = new Vector3(7200, 6500, 384);
+            // @ts-ignore
+            Me.MoveTo(target);
+            lastF = now;
+        }
+    }
 });
 
-console.log("Denis V18: Force Order Loaded!");
+console.log("READY");
