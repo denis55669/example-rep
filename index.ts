@@ -5,45 +5,50 @@ import {
     Vector3
 } from "github.com/octarine-public/wrapper/index"
 
-// --- МЕНЮ З ІКОНКОЮ ---
-const Main = Menu.AddEntry("Auto Feed Ultra", "panorama/images/items/travel_boots_png.vtex_c");
-const FeedDire = Main.AddToggle("ФІД ЗА DIRE (ТЬМА)", false);
-const FeedRadiant = Main.AddToggle("ФІД ЗА RADIANT (СВІТЛО)", false);
+// --- ГОЛОВНА ПАПКА (Denis Scripts) ---
+const Root = Menu.AddEntry("Denis_Scripts", "panorama/images/items/travel_boots_png.vtex_c");
+
+// --- ВКЛАДКА 1: ФІДЕР (Окрема папка в меню) ---
+const FeedFolder = Root.AddEntry("Auto Feeder");
+const FeedDire = FeedFolder.AddToggle("Фід за DIRE (ТЬМА)", false);
+const FeedRad = FeedFolder.AddToggle("Фід за RADIANT (СВІТЛО)", false);
+
+// --- ВКЛАДКА 2: ЧАТ (Окрема папка в меню) ---
+const ChatFolder = Root.AddEntry("Chat Spam");
+const RollSpam = ChatFolder.AddToggle("Спам /roll", false);
+const RollDelay = ChatFolder.AddSlider("Затримка (мс)", 500, 5000, 2000);
 
 let lastF = 0;
-let fDelay = 5000;
+let lastR = 0;
 
 EventsSDK.on("PostDataUpdate", () => {
     const Me = LocalPlayer?.Hero;
     if (!Me || !Me.IsAlive) return;
     const now = Date.now();
 
-    // Перевірка затримки (4-7 секунд рандому)
-    if (now - lastF > fDelay) {
-        lastF = now;
-        fDelay = Math.floor(Math.random() * 3000 + 4000);
+    // 1. ЛОГІКА ЧАТУ (Спам /roll)
+    if (RollSpam.value && now - lastR > RollDelay.value) {
+        lastR = now;
+        // @ts-ignore
+        EventsSDK.ExecuteCommand("say /roll");
+    }
 
-        // ЛОГІКА ДЛЯ DIRE (Біжимо на ворожий фонтан Radiant)
+    // 2. ЛОГІКА ФІДУ (Твоя перевірена версія)
+    if (now - lastF > 5000) {
         if (FeedDire.value) {
-            const target = new Vector3(
-                -7200 + (Math.random() * 400 - 200), 
-                -6600 + (Math.random() * 400 - 200), 
-                384
-            );
+            // Біжимо на фонтан Світлих
+            const target = new Vector3(-7200, -6600, 384);
             // @ts-ignore
             Me.MoveTo(target);
-        } 
-        // ЛОГІКА ДЛЯ RADIANT (Біжимо на ворожий фонтан Dire)
-        else if (FeedRadiant.value) {
-            const target = new Vector3(
-                7200 + (Math.random() * 400 - 200), 
-                6500 + (Math.random() * 400 - 200), 
-                384
-            );
+            lastF = now;
+        } else if (FeedRad.value) {
+            // Біжимо на фонтан Тьми
+            const target = new Vector3(7200, 6500, 384);
             // @ts-ignore
             Me.MoveTo(target);
+            lastF = now;
         }
     }
 });
 
-console.log("Denis Ultra Feed with Icon Loaded!");
+console.log("Denis V17: Modular Menu Loaded!");
