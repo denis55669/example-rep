@@ -5,54 +5,66 @@ import {
     Vector3
 } from "github.com/octarine-public/wrapper/index"
 
-// --- МЕНЮ (Denis V9) ---
-const Main = Menu.AddEntry("Denis_V9_Hard");
-const FeedOn = Main.AddToggle("1. ФИД ВКЛ", false);
-const SideDire = Main.AddToggle("2. За Dire (ТЬМА)", false); 
-const ArmletOn = Main.AddToggle("3. АБУЗ АРМЛЕТА", false);
-const ArmletHP = Main.AddSlider("4. Порог ХП", 100, 500, 270);
+// --- МЕНЮ С ИКОНКОЙ (Тот самый рабочий вариант) ---
+const FeedMenu = Menu.AddEntry("Auto Feed Ultra", "panorama/images/items/travel_boots_png.vtex_c");
+const EnableFeed = FeedMenu.AddToggle("УВІМКНУТИ ФІД", false);
+const MySide = FeedMenu.AddToggle("Я за ТЬМУ (Dire)", false); 
 
-let lastFeed = 0;
-let lastArmlet = 0;
-let feedDelay = 5000;
+// Добавляем Абуз прямо в это же меню
+const EnableArmlet = FeedMenu.AddToggle("АБУЗ АРМЛЕТА", false);
+const ArmletHP = FeedMenu.AddSlider("Поріг ХП", 100, 500, 260);
+
+// Координаты фонтанов
+const RadiantFountain = { x: -7200, y: -6600, z: 384 };
+const DireFountain = { x: 7200, y: 6500, z: 384 };
+
+let lastActionTime = 0;
+let nextRandomDelay = 5000;
+let lastArmletTime = 0;
 
 EventsSDK.on("PostDataUpdate", () => {
-    const Me = LocalPlayer?.Hero;
-    if (!Me || !Me.IsAlive) return;
-    const now = Date.now();
+    const MyHero = LocalPlayer?.Hero;
+    if (!MyHero || !MyHero.IsAlive) return;
 
-    // --- ЛОГИКА АРМЛЕТА (Direct Console Command) ---
-    if (ArmletOn.value && (now - lastArmlet > 200)) {
-        // Проверяем наличие баффа
+    const currentTime = Date.now();
+
+    // --- 1. ЛОГИКА АБУЗА (Приоритет) ---
+    if (EnableArmlet.value && (currentTime - lastArmletTime > 150)) {
+        // Проверка баффа из твоего Lua-файла
         // @ts-ignore
-        const isToggledOn = Me.HasModifier("modifier_item_armlet_unholy_strength");
+        const isActive = MyHero.HasModifier("modifier_item_armlet_unholy_strength");
 
-        if (Me.Health < ArmletHP.value && isToggledOn) {
-            lastArmlet = now;
-            
-            // Прямой прожим первого слота (item slot 0)
-            // Выключаем и включаем через консоль игры
+        if (MyHero.Health < ArmletHP.value && isActive) {
             // @ts-ignore
-            EventsSDK.ExecuteCommand("dota_item_execute 0"); 
-            // @ts-ignore
-            setTimeout(() => { EventsSDK.ExecuteCommand("dota_item_execute 0"); }, 30);
-            
-            console.log("!!! ARMLET FORCE TOGGLE !!!");
+            const armlet = MyHero.GetItem("item_armlet");
+            if (armlet) {
+                // Прямой двойной проклик
+                // @ts-ignore
+                armlet.Cast(); 
+                // @ts-ignore
+                armlet.Cast();
+                lastArmletTime = currentTime;
+            }
         }
     }
 
-    // --- ТВОЙ РАБОЧИЙ ФИД ---
-    if (FeedOn.value && (now - lastFeed > feedDelay)) {
-        lastFeed = now;
-        feedDelay = Math.floor(Math.random() * (8000 - 4000) + 4000);
+    // --- 2. ЛОГИКА ФИДА (Твой оригинал) ---
+    if (EnableFeed.value) {
+        if (currentTime - lastActionTime >= nextRandomDelay) {
+            lastActionTime = currentTime;
+            
+            // Рандомная задержка 4-8 сек
+            nextRandomDelay = Math.floor(Math.random() * (8000 - 4000) + 4000);
 
-        const target = SideDire.value 
-            ? new Vector3(-7200 + (Math.random()*600-300), -6600 + (Math.random()*600-300), 384) 
-            : new Vector3(7200 + (Math.random()*600-300), 6500 + (Math.random()*600-300), 384);
+            const basePos = MySide.value ? RadiantFountain : DireFountain;
+            const randomX = basePos.x + (Math.random() * 600 - 300);
+            const randomY = basePos.y + (Math.random() * 600 - 300);
+            const TargetPos = new Vector3(randomX, randomY, basePos.z);
 
-        // @ts-ignore
-        Me.MoveTo(target);
+            // @ts-ignore
+            MyHero.MoveTo(TargetPos);
+        }
     }
 });
 
-console.log("Denis V9: Hard Console Mode Loaded!");
+console.log("Realistic Feed + Armlet LOADED!");
