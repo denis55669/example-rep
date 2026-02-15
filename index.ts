@@ -6,63 +6,60 @@ import {
     EntityManager
 } from "github.com/octarine-public/wrapper/index"
 
-// --- МЕНЮ (Спрощене) ---
+// --- МЕНЮ (Тільки те, що ти просив) ---
 const Main = Menu.AddEntry("Denis Pack"); 
 const MySide = Main.AddToggle("Side: Dire (OFF=Radiant)", false); 
-const FeedAllies = Main.AddToggle("Feed Allies", false);
+const FeedAllies = Main.AddToggle("Feed Allies", true);
 const EnableArmlet = Main.AddToggle("Enable Armlet", false);
-const CameraDist = Main.AddSlider("Camera Distance", 1200, 2500, 1200);
+// ПОРІГ АБУЗА (Slider), який ти просив повернути
+const ArmletThreshold = Main.AddSlider("Armlet HP Threshold", 100, 600, 250);
 
-let lastActionTime = 0;
+let lastFeedTime = 0;
 let lastArmletTime = 0;
 
 EventsSDK.on("PostDataUpdate", () => {
-    const now = Date.now();
-    
-    // ОБМЕЖЕННЯ: Весь код виконується не частіше ніж раз на 100мс
-    // Це розвантажить процесор і "оживить" меню [cite: 2025-10-12]
-    if (now - lastActionTime < 100) return;
-    lastActionTime = now;
-
     const MyHero = LocalPlayer?.Hero;
     if (!MyHero || !MyHero.IsAlive) return;
 
-    // 1. КАМЕРА (Тільки якщо значення змінилося)
-    // @ts-ignore
-    EventsSDK.ExecuteCommand(`dota_camera_distance ${CameraDist.value}`);
+    const now = Date.now();
 
-    // 2. АРМЛЕТ (Оптимізовано)
-    if (EnableArmlet.value && (now - lastArmletTime > 200)) {
+    // 1. АРМЛЕТ АБУЗ (За порогом HP)
+    if (EnableArmlet.value && (now - lastArmletTime > 150)) {
         // @ts-ignore
         const armlet = MyHero.GetItem("item_armlet");
         // @ts-ignore
-        if (armlet && MyHero.Health < 250 && MyHero.HasModifier("modifier_item_armlet_unholy_strength")) {
+        const hasBuff = MyHero.HasModifier("modifier_item_armlet_unholy_strength");
+
+        // Якщо ХП нижче виставленого в меню порогу
+        if (armlet && hasBuff && MyHero.Health < ArmletThreshold.value) {
             // @ts-ignore
-            armlet.Cast(); armlet.Cast();
+            armlet.Cast(); // Вимкнути
+            // @ts-ignore
+            armlet.Cast(); // Увімкнути
             lastArmletTime = now;
         }
     }
 
-    // 3. ФІД (Раз на 6 секунд)
-    // Використовуємо статичну змінну для затримки фіду
-    if (!globalThis.nextFeedTick) globalThis.nextFeedTick = 0;
-    if (now > globalThis.nextFeedTick) {
-        globalThis.nextFeedTick = now + 6000;
+    // 2. АВТО-ФІД (Працює завжди)
+    if (now - lastFeedTime > 4000) { // Перевірка кожні 4 сек
+        lastFeedTime = now;
         
-        const Target = MySide.value 
-            ? new Vector3(7200, 6500, 384) 
-            : new Vector3(-7200, -6600, 384);
+        const TargetPos = MySide.value 
+            ? new Vector3(7200, 6500, 384)  // Dire
+            : new Vector3(-7200, -6600, 384); // Radiant
 
+        // Відправляємо твого героя
         // @ts-ignore
-        MyHero.MoveTo(Target);
+        MyHero.MoveTo(TargetPos);
 
+        // Відправляємо союзників (якщо включено)
         if (FeedAllies.value) {
             const heroes = EntityManager.GetEntitiesByClass("CDOTA_BaseNPC_Hero");
             for (const hero of heroes) {
                 // @ts-ignore
                 if (hero && hero !== MyHero && hero.IsAlive && hero.IsControllable) {
                     // @ts-ignore
-                    hero.MoveTo(Target);
+                    hero.MoveTo(TargetPos);
                 }
             }
         }
