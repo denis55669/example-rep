@@ -6,16 +6,16 @@ import {
     EntityManager
 } from "github.com/octarine-public/wrapper/index"
 
-// --- МЕНЮ (Тільки те, що ти просив) ---
+// --- МЕНЮ (Минимум нагрузки) ---
 const Main = Menu.AddEntry("Denis Pack"); 
 const MySide = Main.AddToggle("Side: Dire (OFF=Radiant)", false); 
 const FeedAllies = Main.AddToggle("Feed Allies", true);
 const EnableArmlet = Main.AddToggle("Enable Armlet", false);
-// ПОРІГ АБУЗА (Slider), який ти просив повернути
-const ArmletThreshold = Main.AddSlider("Armlet HP Threshold", 100, 600, 250);
+// Изменил диапазон, чтобы слайдер перестал прыгать
+const ArmletHP = Main.AddSlider("Armlet HP Threshold", 150, 500, 250);
 
-let lastFeedTime = 0;
-let lastArmletTime = 0;
+let lastFeed = 0;
+let lastArmlet = 0;
 
 EventsSDK.on("PostDataUpdate", () => {
     const MyHero = LocalPlayer?.Hero;
@@ -23,45 +23,45 @@ EventsSDK.on("PostDataUpdate", () => {
 
     const now = Date.now();
 
-    // 1. АРМЛЕТ АБУЗ (За порогом HP)
-    if (EnableArmlet.value && (now - lastArmletTime > 150)) {
+    // 1. АРМЛЕТ (Проверка на каждом тике для выживания)
+    if (EnableArmlet.value && (now - lastArmlet > 150)) {
         // @ts-ignore
         const armlet = MyHero.GetItem("item_armlet");
         // @ts-ignore
-        const hasBuff = MyHero.HasModifier("modifier_item_armlet_unholy_strength");
+        const isActive = MyHero.HasModifier("modifier_item_armlet_unholy_strength");
 
-        // Якщо ХП нижче виставленого в меню порогу
-        if (armlet && hasBuff && MyHero.Health < ArmletThreshold.value) {
+        if (armlet && isActive && MyHero.Health < ArmletHP.value) {
+            // Двойной каст для абуза
             // @ts-ignore
-            armlet.Cast(); // Вимкнути
+            armlet.Cast(); 
             // @ts-ignore
-            armlet.Cast(); // Увімкнути
-            lastArmletTime = now;
+            armlet.Cast();
+            lastArmlet = now;
         }
     }
 
-    // 2. АВТО-ФІД (Працює завжди)
-    if (now - lastFeedTime > 4000) { // Перевірка кожні 4 сек
-        lastFeedTime = now;
+    // 2. АВТО-ФИД (Работает всегда)
+    if (now - lastFeed > 3000) { // Каждые 3 сек для обхода Humanizer
+        lastFeed = now;
         
-        const TargetPos = MySide.value 
+        const Target = MySide.value 
             ? new Vector3(7200, 6500, 384)  // Dire
             : new Vector3(-7200, -6600, 384); // Radiant
 
-        // Відправляємо твого героя
         // @ts-ignore
-        MyHero.MoveTo(TargetPos);
+        MyHero.MoveTo(Target);
 
-        // Відправляємо союзників (якщо включено)
         if (FeedAllies.value) {
             const heroes = EntityManager.GetEntitiesByClass("CDOTA_BaseNPC_Hero");
             for (const hero of heroes) {
                 // @ts-ignore
                 if (hero && hero !== MyHero && hero.IsAlive && hero.IsControllable) {
                     // @ts-ignore
-                    hero.MoveTo(TargetPos);
+                    hero.MoveTo(Target);
                 }
             }
         }
     }
 });
+
+console.log("Denis Pack Updated: Slider and Feed fixed.");
