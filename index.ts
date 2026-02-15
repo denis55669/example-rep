@@ -3,118 +3,77 @@ import {
     LocalPlayer,
     Menu,
     Vector3,
-    EntityManager,
-    Player,
-    Input
+    EntityManager
 } from "github.com/octarine-public/wrapper/index"
 
-// --- НАЛАШТУВАННЯ МЕНЮ ---
-const Utils = Menu.AddEntry("Denis Utilities", "panorama/images/hud/reborn/settings_icon_psd.vtex_c");
-const Feeder = Utils.AddEntry("Grief Lord", "panorama/images/items/divine_rapier_png.vtex_c");
+// --- МЕНЮ (Без папок, сразу с иконкой Рапиры) ---
+const Main = Menu.AddEntry("Grief Lord V24", "panorama/images/items/divine_rapier_png.vtex_c");
 
-const FeedHero = Feeder.AddToggle("1. Фід ГЕРОЄМ", false);
-const FeedCour = Feeder.AddToggle("2. Фід КУР'ЄРАМИ", false);
-const FeedAllies = Feeder.AddToggle("3. Фід СОЮЗНИКАМИ (Shared/Leavers)", false);
-const Side = Feeder.AddList("Куди бігти?", ["DIRE (Вниз-Вліво -> Radiant)", "RADIANT (Вгору-Вправо -> Dire)"], 0);
+// Настройки
+const RunRadiant = Main.AddToggle("1. Бежать к RADIANT (Вниз)", false);
+const RunDire = Main.AddToggle("2. Бежать к DIRE (Вверх)", false);
 
-// --- СИСТЕМНІ КОНСТАНТИ (Щоб скрипт не ламався без Enum) ---
-const DOTA_UNIT_ORDER_MOVE_TO_POSITION = 5;
-const DOTA_UNIT_ORDER_ATTACK_MOVE = 8;
+const FeedHero = Main.AddToggle("3. ФИД: Мой Герой", false);
+const FeedCour = Main.AddToggle("4. ФИД: Курьеры", false);
+const FeedAllies = Main.AddToggle("5. ФИД: Союзники (Shared)", false);
 
-let lastTick = 0;
+let lastMove = 0;
 
-// --- ГОЛОВНИЙ ЦИКЛ ---
 EventsSDK.on("PostDataUpdate", () => {
     const Me = LocalPlayer?.Hero;
     if (!Me || !Me.IsAlive) return;
 
     const now = Date.now();
-    // Частота оновлення наказів (2.5 сек - ідеально для сервера)
-    if (now - lastTick < 2500) return;
-    lastTick = now;
+    // Делаем действия раз в 1 секунду (чтобы не вешать меню)
+    if (now - lastMove < 1000) return;
+    lastMove = now;
 
-    // 1. Визначаємо ціль
-    let targetPos: Vector3;
-    if (Side.value === 0) {
-        // Ми граємо за DIRE, біжимо на базу Radiant
-        targetPos = new Vector3(-7149, -6696, 384); 
-    } else {
-        // Ми граємо за RADIANT, біжимо на базу Dire
-        targetPos = new Vector3(7149, 6696, 384);
+    // 1. ОПРЕДЕЛЯЕМ ЦЕЛЬ
+    let target: Vector3 | null = null;
+
+    if (RunRadiant.value) {
+        target = new Vector3(-7200, -6600, 384); // Фонтан Radiant
+    } else if (RunDire.value) {
+        target = new Vector3(7200, 6500, 384);   // Фонтан Dire
     }
 
-    // Додаємо мікро-рандом, щоб сервер не ігнорував однакові команди
-    targetPos.x += (Math.random() * 300 - 150);
-    targetPos.y += (Math.random() * 300 - 150);
+    // Если цель не выбрана - ничего не делаем
+    if (!target) return;
 
-    // --- БЛОК ВИКОНАННЯ ---
+    // Добавляем микро-рандом, чтобы не бежали "в одну точку"
+    target.x += (Math.random() * 400 - 200);
+    target.y += (Math.random() * 400 - 200);
 
-    // 1. ГЕРОЙ
+    // 2. ФИД ГЕРОЕМ
     if (FeedHero.value) {
-        ForceMove(Me, targetPos);
+        // @ts-ignore
+        Me.MoveTo(target);
     }
 
-    // 2. КУР'ЄРИ
+    // 3. ФИД КУРЬЕРАМИ
     if (FeedCour.value) {
-        try {
-            const couriers = EntityManager.GetEntitiesByClass("npc_dota_courier");
-            for (const cour of couriers) {
+        const couriers = EntityManager.GetEntitiesByClass("npc_dota_courier");
+        for (const cour of couriers) {
+            // @ts-ignore
+            if (cour.IsAlive && cour.IsMyTeam) {
                 // @ts-ignore
-                if (cour && cour.IsAlive && cour.IsMyTeam) {
-                    ForceMove(cour, targetPos);
-                }
+                cour.MoveTo(target);
             }
-        } catch (e) {}
+        }
     }
 
-    // 3. СОЮЗНИКИ (Ті, кого можна контролювати)
+    // 4. ФИД СОЮЗНИКАМИ (Ливеры и те, кто дал контроль)
     if (FeedAllies.value) {
-        try {
-            const heroes = EntityManager.GetEntitiesByClass("npc_dota_hero_*");
-            for (const hero of heroes) {
+        const heroes = EntityManager.GetEntitiesByClass("npc_dota_hero_*");
+        for (const hero of heroes) {
+            // Проверяем: живой, за нас, не мы сами, и МОЖНО УПРАВЛЯТЬ
+            // @ts-ignore
+            if (hero.IsAlive && hero.IsMyTeam && !hero.IsMe && hero.IsControllable) {
                 // @ts-ignore
-                // Перевірка: Живий + Свій + Не я + Є контроль
-                if (hero && hero.IsAlive && hero.IsMyTeam && !hero.IsMe && hero.IsControllable) {
-                    ForceMove(hero, targetPos);
-                }
+                hero.MoveTo(target);
             }
-        } catch (e) {}
+        }
     }
 });
 
-// --- ФУНКЦІЯ "СИЛОВОГО" РУХУ (THE BIG CODE) ---
-function ForceMove(unit: any, pos: Vector3) {
-    if (!unit || !pos) return;
-
-    // СПОСІБ 1: Player.PrepareOrder (Найпотужніший - прямий пакет на сервер)
-    // Це емулює натискання правої кнопки миші на рівні движка
-    try {
-        if (Player && Player.PrepareOrder) {
-            Player.PrepareOrder(
-                LocalPlayer.RawPlayer,        // Від кого наказ (від нас)
-                DOTA_UNIT_ORDER_MOVE_TO_POSITION, // Тип наказу (Рух)
-                0,                            // targetIndex (не треба для руху в точку)
-                pos,                          // Куди йти
-                0,                            // abilityIndex (не треба)
-                unit,                         // Яким юнітом керуємо
-                false,                        // queue (черга? ні, зразу!)
-                true                          // showEffects (показувати клік? так!)
-            );
-            return; // Якщо спрацювало - виходимо
-        }
-    } catch (error) {
-        // Якщо Player не знайдено, йдемо до Способу 2
-    }
-
-    // СПОСІБ 2: Unit.MoveTo (Стандартний API)
-    // Запасний варіант, якщо перший не спрацював
-    try {
-        if (unit.MoveTo) {
-            unit.MoveTo(pos);
-        }
-    } catch (error) {
-        console.log("Move Failed for unit: " + unit.Name);
-    }
-}
-
-console.log("Denis Grief Lord: HARDCORE MODE Loaded!");
+console.log("Denis Grief Lord V24 Loaded!");
