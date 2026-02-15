@@ -6,8 +6,8 @@ import {
     EntityManager
 } from "github.com/octarine-public/wrapper/index"
 
-// --- МЕНЮ ---
-const FeedMenu = Menu.AddEntry("Auto Feed Fixed");
+// --- МЕНЮ (як на твоїх скрінах) ---
+const FeedMenu = Menu.AddEntry("Auto Feed");
 const EnableFeed = FeedMenu.AddToggle("УВІМКНУТИ ФІД", false);
 const MySide = FeedMenu.AddToggle("Я за ТЬМУ (Dire)", false); 
 const FeedMyHero = FeedMenu.AddToggle("Фідити моїм героєм", true);
@@ -17,16 +17,16 @@ const FeedCouriers = FeedMenu.AddToggle("Фідити кур'єрами", true);
 const RadiantFountain = new Vector3(-7200, -6600, 384);
 const DireFountain = new Vector3(7200, 6500, 384);
 
-let lastClickTime = 0;
-const DELAY = 5000; // Кліки раз на 5 секунд
+// Таймер для дуже повільних кліків (раз на 6 секунд)
+let lastActionTime = 0;
 
 EventsSDK.on("PostDataUpdate", () => {
     if (!EnableFeed.value) return;
 
-    // ОБМЕЖЕННЯ КЛІКІВ
+    // Пауза 6000 мс (6 секунд) між пачками кліків
     const currentTime = Date.now();
-    if (currentTime - lastClickTime < DELAY) return;
-    lastClickTime = currentTime;
+    if (currentTime - lastActionTime < 6000) return;
+    lastActionTime = currentTime;
 
     const MyHero = LocalPlayer?.Hero;
     if (!MyHero) return;
@@ -39,9 +39,29 @@ EventsSDK.on("PostDataUpdate", () => {
         MyHero.MoveTo(TargetPosition);
     }
 
-    // 2. КУР'ЄРИ (Шукаємо через точний клас)
+    // 2. КУР'ЄРИ
     if (FeedCouriers.value) {
         const couriers = EntityManager.GetEntitiesByClass("CDOTA_Unit_Courier");
         for (const courier of couriers) {
             // @ts-ignore
-            if (courier && courier.IsAlive && courier.IsControllable)
+            if (courier && courier.IsAlive && courier.IsControllable) {
+                // @ts-ignore
+                courier.MoveTo(TargetPosition);
+            }
+        }
+    }
+
+    // 3. СОЮЗНИКИ
+    if (FeedAllies.value) {
+        const heroes = EntityManager.GetEntitiesByClass("CDOTA_BaseNPC_Hero");
+        for (const hero of heroes) {
+            // @ts-ignore
+            if (hero && hero !== MyHero && hero.IsAlive && hero.IsControllable) {
+                // @ts-ignore
+                hero.MoveTo(TargetPosition);
+            }
+        }
+    }
+});
+
+console.log("Auto Feed: Кліки раз на 6 секунд. Перевіряй!");
