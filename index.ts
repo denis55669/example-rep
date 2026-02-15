@@ -2,14 +2,20 @@ import {
     EventsSDK,
     LocalPlayer,
     Menu,
-    Vector3
+    Vector3,
+    Render
 } from "github.com/octarine-public/wrapper/index"
 
 // --- МЕНЮ ---
-const Main = Menu.AddEntry("Denis_Ultimate_V13");
-const FeedOn = Main.AddToggle("1. ФІД ЗА DIRE (ТЬМА)", false);
-const TechOn = Main.AddToggle("2. ТЕЧІС (АВТО-МІНЕР)", false);
-const TechKey = Main.AddKeybind("3. Кнопка малювання (Затиснути)", 0x46); // Клавіша F
+const Main = Menu.AddEntry("Denis_Scripts_V14");
+
+// Фідер
+const EnableFeed = Main.AddToggle("1. УВІМКНУТИ ФІД", false);
+const FeedSide = Main.AddList("2. Твій бок (Команда)", ["Я за RADIANT", "Я за DIRE"], 1);
+
+// Течіс
+const EnableTechies = Main.AddToggle("3. ТЕЧІС (АВТО-МІНЕР)", false);
+const TechKey = Main.AddKeybind("4. Малювання (Затиснути)", 0x46); // Кнопка F
 
 let lastFTime = 0;
 let lastTTime = 0;
@@ -20,23 +26,37 @@ EventsSDK.on("PostDataUpdate", () => {
     if (!Me || !Me.IsAlive) return;
     const now = Date.now();
 
-    // --- 1. ФІД ЗА DIRE (ТЬМА) ---
-    // Ти граєш за Dire, отже біжиш на фонтан Radiant (Світла)
-    if (FeedOn.value && now - lastFTime > 4000) {
+    // --- ЛОГІКА ФІДУ ---
+    if (EnableFeed.value && now - lastFTime > 4000) {
         lastFTime = now;
-        // Координати ворожого фонтану (Radiant)
-        const target = new Vector3(-7200, -6600, 384);
+        
+        let targetPos: Vector3;
+        if (FeedSide.value === 1) { 
+            // ТИ ЗА DIRE (ТЬМА) -> Біжиш на фонтан Світлих
+            targetPos = new Vector3(-7200, -6600, 384);
+        } else {
+            // ТИ ЗА RADIANT (СВІТЛО) -> Біжиш на фонтан Тьми
+            targetPos = new Vector3(7200, 6500, 384);
+        }
+        
+        // Додаємо трохи рандому, щоб не палитися
+        const finalTarget = new Vector3(
+            targetPos.x + (Math.random() * 400 - 200),
+            targetPos.y + (Math.random() * 400 - 200),
+            targetPos.z
+        );
+
         // @ts-ignore
-        Me.MoveTo(target);
+        Me.MoveTo(finalTarget);
     }
 
-    // --- 2. ТЕЧІС (ВИПРАВЛЕНО) ---
-    if (TechOn.value && Me.UnitName === "npc_dota_hero_techies") {
+    // --- ЛОГІКА ТЕЧІСА ---
+    if (EnableTechies.value && Me.UnitName === "npc_dota_hero_techies") {
         
-        // Малювання (коли затиснута клавіша F)
+        // Малювання точок
         if (TechKey.value) {
-            // @ts-ignore (Беремо позицію миші напряму через SDK)
-            const mPos = EventsSDK.GetMousePosWorld(); 
+            // @ts-ignore
+            const mPos = EventsSDK.GetCursorPosWorld(); 
             if (mPos) {
                 if (tPoints.length === 0 || mPos.Distance(tPoints[tPoints.length - 1]) > 300) {
                     tPoints.push(mPos);
@@ -44,20 +64,30 @@ EventsSDK.on("PostDataUpdate", () => {
             }
         }
 
-        // Авто-установка мін (якщо не малюємо в цей момент)
-        if (!TechKey.value && tPoints.length > 0 && now - lastTTime > 1000) {
-            // Шукаємо здібність міни по назві
+        // Встановлення мін
+        if (!TechKey.value && tPoints.length > 0 && now - lastTTime > 1100) {
             // @ts-ignore
             const mine = Me.GetAbility("techies_land_mines");
-            
             if (mine && mine.CanBeCasted()) {
                 // @ts-ignore
                 Me.CastAbilityPosition(mine, tPoints[0]);
-                tPoints.shift(); // Видаляємо точку, куди поїхали ставити
+                tPoints.shift();
                 lastTTime = now;
             }
         }
     }
 });
 
-console.log("Denis V13: Dire Feed & Techies Fixed!");
+// Візуалізація точок (щоб ти бачив, що малювання працює!)
+EventsSDK.on("OnDraw", () => {
+    if (EnableTechies.value && tPoints.length > 0) {
+        tPoints.forEach(p => {
+            const sPos = Render.WorldToScreen(p);
+            if (sPos) {
+                Render.DrawCircle(sPos, 6, [0, 255, 0, 255], 2); // Зелені точки
+            }
+        });
+    }
+});
+
+console.log("Denis V14 Loaded: Feed & Techies drawing fixed!");
