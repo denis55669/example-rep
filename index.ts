@@ -7,43 +7,41 @@ import {
 } from "github.com/octarine-public/wrapper/index"
 
 // --- МЕНЮ ---
-const Entry = Menu.AddEntry("Auto Feed Fixed")
-const EnableFeed = Entry.AddToggle("УВІМКНУТИ ФІД", false)
-const MySide = Entry.AddToggle("Я за ТЬМУ (Dire)", false) 
+const FeedMenu = Menu.AddEntry("Auto Feed Fixed");
+const EnableFeed = FeedMenu.AddToggle("УВІМКНУТИ ФІД", false);
+const MySide = FeedMenu.AddToggle("Я за ТЬМУ (Dire)", false); 
+const FeedMyHero = FeedMenu.AddToggle("Фідити моїм героєм", true);
+const FeedAllies = FeedMenu.AddToggle("Фідити союзниками", true);
+const FeedCouriers = FeedMenu.AddToggle("Фідити кур'єрами", true);
 
-const RadiantFountain = new Vector3(-7200, -6600, 384)
-const DireFountain = new Vector3(7200, 6500, 384)
+const RadiantFountain = new Vector3(-7200, -6600, 384);
+const DireFountain = new Vector3(7200, 6500, 384);
 
-let lastClickTime = 0
-const DELAY = 5000 // 5 секунд між кліками для безпеки
+let lastClickTime = 0;
+const DELAY = 5000; // Кліки раз на 5 секунд
 
 EventsSDK.on("PostDataUpdate", () => {
-    if (!EnableFeed.value) return
+    if (!EnableFeed.value) return;
 
-    const currentTime = Date.now()
-    if (currentTime - lastClickTime < DELAY) return
-    lastClickTime = currentTime
+    // ОБМЕЖЕННЯ КЛІКІВ
+    const currentTime = Date.now();
+    if (currentTime - lastClickTime < DELAY) return;
+    lastClickTime = currentTime;
 
-    const MyHero = LocalPlayer?.Hero
-    if (!MyHero) return
+    const MyHero = LocalPlayer?.Hero;
+    if (!MyHero) return;
 
-    const TargetPos = MySide.value ? RadiantFountain : DireFountain
+    const TargetPosition = MySide.value ? RadiantFountain : DireFountain;
 
-    // ШУКАЄМО ВСІХ ЮНІТІВ (Герої, кур'єри, закликані істоти)
-    const allEntities = EntityManager.GetEntities()
-
-    for (const entity of allEntities) {
+    // 1. ТВІЙ ГЕРОЙ
+    if (FeedMyHero.value && MyHero.IsAlive) {
         // @ts-ignore
-        if (entity && entity.IsAlive && entity.IsControllable) {
-            
-            // Перевірка, щоб не фідити будівлями або ворогами
-            // @ts-ignore
-            if (entity.TeamNum === MyHero.TeamNum) {
-                // @ts-ignore
-                entity.MoveTo(TargetPos)
-            }
-        }
+        MyHero.MoveTo(TargetPosition);
     }
-})
 
-console.log("Скрипт Дениса: Універсальний фід (5 сек затримка) завантажено!")
+    // 2. КУР'ЄРИ (Шукаємо через точний клас)
+    if (FeedCouriers.value) {
+        const couriers = EntityManager.GetEntitiesByClass("CDOTA_Unit_Courier");
+        for (const courier of couriers) {
+            // @ts-ignore
+            if (courier && courier.IsAlive && courier.IsControllable)
