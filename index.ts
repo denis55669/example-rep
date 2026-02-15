@@ -6,64 +6,63 @@ import {
     EntityManager
 } from "github.com/octarine-public/wrapper/index"
 
-// --- МЕНЮ (Змінив назву, щоб уникнути конфліктів) ---
-const XMenu = Menu.AddEntry("Denis_Cheat_V3"); 
+// Новое ID меню, чтобы ничего не прыгало
+const DenisV4 = Menu.AddEntry("Denis_Final_v4");
+const FeedActive = DenisV4.AddToggle("FEED_ON", false);
+const TargetDire = DenisV4.AddToggle("Target_is_Dire", false);
+const FeedTeammates = DenisV4.AddToggle("Feed_Teammates", true);
 
-const FeedEn = XMenu.AddToggle("RUN TO FEED", false);
-const SideDire = XMenu.AddToggle("Target: DIRE", false); 
-const AllyFeed = XMenu.AddToggle("Move Allies", true);
+const ArmletActive = DenisV4.AddToggle("Armlet_Abuse", false);
+const ArmletHPValue = DenisV4.AddList("Armlet_HP", ["150", "200", "250", "300", "350"], 2);
 
-const ArmletEn = XMenu.AddToggle("Auto Armlet", false);
-// Використовуємо список, щоб не було "стрибків" слайдера
-const ArmletHP = XMenu.AddList("Armlet HP", ["150", "200", "250", "300", "350"], 2);
-
-let lastF = 0;
-let lastA = 0;
+let nextTick = 0;
 
 EventsSDK.on("PostDataUpdate", () => {
     const Me = LocalPlayer?.Hero;
     if (!Me || !Me.IsAlive) return;
 
     const now = Date.now();
+    if (now < nextTick) return; 
+    nextTick = now + 200; // Ограничиваем до 5 проверок в секунду для Xeon [cite: 2025-10-12]
 
-    // 1. ЛОГІКА АРМЛЕТА
-    if (ArmletEn.value && (now - lastA > 150)) {
-        const vals = [150, 200, 250, 300, 350];
-        const threshold = vals[ArmletHP.value]; // Беремо число зі списку
-        
+    // --- 1. АРМЛЕТ (Список вместо слайдера, чтобы не прыгал)
+    if (ArmletActive.value) {
+        const hpLimit = [150, 200, 250, 300, 350][ArmletHPValue.value];
         // @ts-ignore
         const armlet = Me.GetItem("item_armlet");
         // @ts-ignore
-        if (armlet && Me.Health < threshold && Me.HasModifier("modifier_item_armlet_unholy_strength")) {
+        if (armlet && Me.Health < hpLimit && Me.HasModifier("modifier_item_armlet_unholy_strength")) {
             // @ts-ignore
-            armlet.Cast(); armlet.Cast(); 
-            lastA = now;
+            armlet.Cast(); armlet.Cast();
         }
     }
 
-    // 2. ЛОГІКА ФІДУ (Примусова команда кожні 3 сек)
-    if (FeedEn.value && (now - lastF > 3000)) {
-        lastF = now;
-        
-        const pos = SideDire.value 
-            ? new Vector3(7200, 6500, 384) 
-            : new Vector3(-7200, -6600, 384);
+    // --- 2. ФИДЕР (Используем консоль для обхода Humanizer)
+    if (FeedActive.value) {
+        // Каждые 4 секунды принудительно шлем команду
+        if (!globalThis.lastMove) globalThis.lastMove = 0;
+        if (now - globalThis.lastMove > 4000) {
+            globalThis.lastMove = now;
 
-        // ПРЯМА КОМАНДА (обхід Humanizer)
-        // @ts-ignore
-        Me.MoveTo(pos);
+            const x = TargetDire.value ? 7200 : -7200;
+            const y = TargetDire.value ? 6500 : -6600;
 
-        if (AllyFeed.value) {
-            const ents = EntityManager.GetEntitiesByClass("CDOTA_BaseNPC_Hero");
-            for (const h of ents) {
-                // @ts-ignore
-                if (h && h !== Me && h.IsAlive && h.IsControllable) {
+            // Прямая команда в обход защиты Octarine
+            // @ts-ignore
+            EventsSDK.ExecuteCommand(`dota_unit_moveto ${x} ${y}`);
+
+            if (FeedTeammates.value) {
+                const units = EntityManager.GetEntitiesByClass("CDOTA_BaseNPC_Hero");
+                for (const u of units) {
                     // @ts-ignore
-                    h.MoveTo(pos);
+                    if (u && u !== Me && u.IsAlive && u.IsControllable) {
+                        // @ts-ignore
+                        u.MoveTo(new Vector3(x, y, 384));
+                    }
                 }
             }
         }
     }
 });
 
-console.log("Denis_Cheat_V3: Loaded!");
+console.log("Denis_Final_v4 Loaded. Фид только при FEED_ON!");
