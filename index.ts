@@ -6,101 +6,79 @@ import {
     EntityManager
 } from "github.com/octarine-public/wrapper/index"
 
-// Малюємо меню з іконкою
-const FeedMenu = Menu.AddEntry("Auto Feed Ultra", "panorama/images/items/travel_boots_png.vtex_c");
-const EnableFeed = FeedMenu.AddToggle("УВІМКНУТИ ФІД", false);
-const MySide = FeedMenu.AddToggle("Я за ТЬМУ (Dire)", false); 
+// --- ЕДИНОЕ МЕНЮ (Чтобы не прыгало) ---
+const MainMenu = Menu.AddEntry("Denis Ultimate Pack");
 
+// Настройки Фида
+const FeedSettings = MainMenu.AddEntry("Auto Feed (Всегда активен)");
+const MySide = FeedSettings.AddToggle("Я за ТЬМУ (Dire)", false); 
+const FeedAllies = FeedSettings.AddToggle("Фидить союзниками", true);
+
+// Настройки Армлета
+const ArmletSettings = MainMenu.AddEntry("Armlet God");
+const EnableArmlet = ArmletSettings.AddToggle("Включить Абуз", false);
+const MinHP = ArmletSettings.AddSlider("Мин. ХП для абуза", 100, 1000, 250);
+
+// Координаты и таймеры
 const RadiantFountain = new Vector3(-7200, -6600, 384);
 const DireFountain = new Vector3(7200, 6500, 384);
 
-let lastActionTime = 0;
+let lastFeedTime = 0;
+let lastArmletTime = 0;
 
 EventsSDK.on("PostDataUpdate", () => {
-    if (!EnableFeed.value) return;
-
-    const currentTime = Date.now();
-    // Стабільна затримка 5 секунд
-    if (currentTime - lastActionTime < 5000) return;
-    lastActionTime = currentTime;
-
     const MyHero = LocalPlayer?.Hero;
-    if (!MyHero) return;
+    if (!MyHero || !MyHero.IsAlive) return;
 
-    const TargetPos = MySide.value ? RadiantFountain : DireFountain;
+    const now = Date.now();
 
-    // 1. Рухаємо свого героя (Оригінальний метод, що працював)
-    if (MyHero.IsAlive) {
+    // --- 1. ЛОГИКА АРМЛЕТА (Если включен) ---
+    if (EnableArmlet.value && (now - lastArmletTime > 150)) {
         // @ts-ignore
-        MyHero.MoveTo(TargetPos);
+        const armlet = MyHero.GetItem("item_armlet");
+        // @ts-ignore
+        const isActive = MyHero.HasModifier("modifier_item_armlet_unholy_strength");
+
+        if (armlet && isActive && MyHero.Health < MinHP.value) {
+            // @ts-ignore
+            armlet.Cast(); // Выкл
+            // @ts-ignore
+            armlet.Cast(); // Вкл
+            lastArmletTime = now;
+        }
     }
 
-    // 2. Рухаємо союзників (Найпростіший метод через EntityManager)
-    const allEntities = EntityManager.GetEntitiesByClass("CDOTA_BaseNPC_Hero");
-    for (const ent of allEntities) {
-        // Якщо це герой, він живий і ТИ можеш ним керувати
+    // --- 2. ЛОГИКА ФИДА (РАБОТАЕТ ВСЕГДА) ---
+    // Каждые 6 секунд отправляем всех на фонтан
+    if (now - lastFeedTime > 6000) {
+        lastFeedTime = now;
+        const Target = MySide.value ? RadiantFountain : DireFountain;
+
+        // Функция для рандомного клика (защита от бана)
+        const getOffsetPos = (base: Vector3) => {
+            return new Vector3(
+                base.x + (Math.random() * 400 - 200),
+                base.y + (Math.random() * 400 - 200),
+                base.z
+            );
+        };
+
+        // Твой герой бежит всегда
         // @ts-ignore
-        if (ent && ent.IsAlive && ent.IsControllable) {
-            // @ts-ignore
-            ent.MoveTo(TargetPos);
+        MyHero.MoveTo(getOffsetPos(Target));
+
+        // Союзники (если включено)
+        if (FeedAllies.value) {
+            const heroes = EntityManager.GetEntitiesByClass("CDOTA_BaseNPC_Hero");
+            for (const hero of heroes) {
+                // @ts-ignore
+                if (hero && hero !== MyHero && hero.IsAlive && hero.IsControllable) {
+                    // @ts-ignore
+                    hero.MoveTo(getOffsetPos(Target));
+                }
+            }
         }
     }
 });
 
-console.log("Back to Basics: Фід активовано.");
-import {
-    EventsSDK,
-    LocalPlayer,
-    Menu,
-    EntitySystem
-} from "github.com/octarine-public/wrapper/index"
-
-// --- МЕНЮ ---
-const ArmletMenu = Menu.AddEntry("Armlet God");
-const EnableScript = ArmletMenu.AddToggle("Включить Абуз", true);
-// Ползунок: При каком ХП переключать (от 100 до 1000, по умолчанию 300)
-const MinHP = ArmletMenu.AddSlider("Мин. здоровье для абуза", 100, 1000, 300);
-
-let lastToggleTime = 0;
-const TOGGLE_COOLDOWN = 200; // Задержка в мс, чтобы не крашнуть сервер спамом
-
-EventsSDK.on("PostDataUpdate", () => {
-    if (!EnableScript.value) return;
-
-    const MyHero = LocalPlayer?.Hero;
-    if (!MyHero || !MyHero.IsAlive) return;
-
-    // Ищем Армлет в инвентаре
-    // @ts-ignore
-    const armlet = MyHero.GetItem("item_armlet");
-    if (!armlet) return; // Если армлета нет, скрипт спит
-
-    // Проверяем текущее время для кулдауна
-    const now = Date.now();
-    if (now - lastToggleTime < TOGGLE_COOLDOWN) return;
-
-    // --- ЛОГИКА АБУЗА ---
-    // 1. Проверяем, включен ли Армлет (ищем бафф на герое)
-    // @ts-ignore
-    const isArmletActive = MyHero.HasModifier("modifier_item_armlet_unholy_strength");
-
-    // 2. Если Армлет включен И здоровье ниже порога
-    // @ts-ignore
-    if (isArmletActive && MyHero.Health < MinHP.value) {
-        
-        // Магия Xeon: Делаем двойной каст моментально [cite: 2025-10-12]
-        
-        // 1. Выключаем
-        // @ts-ignore
-        armlet.Cast();
-        
-        // 2. Включаем (сразу же, в том же тике или следующем)
-        // @ts-ignore
-        armlet.Cast();
-
-        lastToggleTime = now;
-        console.log(`Armlet God: Спасено на ${MyHero.Health} HP!`);
-    }
-});
-
-console.log("Armlet God загружен. Купи Armlet и живи вечно!");
+console.log("Denis Ultimate Pack: Фид всегда включен, Армлет ждет активации.");
