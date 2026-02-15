@@ -7,58 +7,48 @@ import {
 } from "github.com/octarine-public/wrapper/index"
 
 // --- МЕНЮ ---
-const FeedMenu = Menu.AddEntry("Auto Feed");
-const EnableFeed = FeedMenu.AddToggle("УВІМКНУТИ ФІД", false);
-const MySide = FeedMenu.AddToggle("Я за ТЬМУ (Dire)", false); // Якщо біжить не туди - клацни це
-const FeedMyHero = FeedMenu.AddToggle("Фідити моїм героєм", true);
-const FeedAllies = FeedMenu.AddToggle("Фідити союзниками", true);
-const FeedCouriers = FeedMenu.AddToggle("Фідити кур'єрами", true);
+const Entry = Menu.AddEntry("Auto Feed Ultra");
+const EnableFeed = Entry.AddToggle("УВІМКНУТИ ФІД", false);
+const MySide = Entry.AddToggle("Я за ТЬМУ (Dire)", false); 
+const SlowMode = Entry.AddSlider("Затримка кліків (мс)", 1000, 10000, 3000); // 3 секунди за замовчуванням
 
-// Координати фонтанів
 const RadiantFountain = new Vector3(-7200, -6600, 384);
 const DireFountain = new Vector3(7200, 6500, 384);
+
+let lastClickTime = 0;
 
 EventsSDK.on("PostDataUpdate", () => {
     if (!EnableFeed.value) return;
 
+    // Дуже повільні кліки
+    const currentTime = Date.now();
+    if (currentTime - lastClickTime < SlowMode.value) return;
+    lastClickTime = currentTime;
+
     const MyHero = LocalPlayer?.Hero;
     if (!MyHero) return;
 
-    // ВИЗНАЧЕННЯ ЦІЛІ:
-    // Якщо галочка "Я за Dire" ВИМКНЕНА (ти Radiant) -> біжимо на Dire (ворог)
-    // Якщо галочка "Я за Dire" УВІМКНЕНА -> біжимо на Radiant (ворог)
-    const TargetPosition = MySide.value ? RadiantFountain : DireFountain;
+    const TargetPos = MySide.value ? RadiantFountain : DireFountain;
 
-    // 1. Мій герой
-    if (FeedMyHero.value && MyHero.IsAlive) {
+    // БЕРЕМО ВЗАГАЛІ ВСІХ СОЮЗНИКІВ НА КАРТІ
+    // Це включає: тебе, тіммейтів, кур'єрів, саммонів
+    const myTeamUnits = EntityManager.GetEntitiesByTeam(MyHero.TeamNum);
+
+    for (const unit of myTeamUnits) {
+        // Перевірка: чи живий юніт і чи можемо ми ним КЕРУВАТИ
+        // IsControllable - це головний фільтр для кур'єрів та лівнутих
         // @ts-ignore
-        MyHero.MoveTo(TargetPosition);
-    }
-
-    // 2. Кур'єри
-    if (FeedCouriers.value) {
-        const couriers = EntityManager.GetEntitiesByClass("CDOTA_Unit_Courier");
-        for (const courier of couriers) {
+        if (unit && unit.IsAlive && unit.IsControllable) {
+            
             // @ts-ignore
-            if (courier.IsAlive && courier.IsControllable) {
-                // @ts-ignore
-                courier.MoveTo(TargetPosition);
-            }
-        }
-    }
-
-    // 3. Союзники (Shared/Leavers)
-    if (FeedAllies.value) {
-        const heroes = EntityManager.GetEntitiesByClass("CDOTA_BaseNPC_Hero");
-        for (const hero of heroes) {
-            if (hero === MyHero) continue;
+            const unitName = unit.UnitName || "Unknown";
+            
+            // Якщо це не ворог і не будівля - біжимо!
             // @ts-ignore
-            if (hero.IsAlive && hero.IsControllable) {
-                // @ts-ignore
-                hero.MoveTo(TargetPosition);
-            }
+            unit.MoveTo(TargetPos);
+            
+            // Вивід у консоль для тесту (потім можна видалити)
+            console.log("Фідимо юнітом: " + unitName);
         }
     }
 });
-
-console.log("Auto Feed виправлено. Якщо біжить не туди - зміни сторону в меню!");
