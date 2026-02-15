@@ -2,10 +2,11 @@ import {
     EventsSDK,
     LocalPlayer,
     Menu,
-    Vector3
+    Vector3,
+    EntityManager
 } from "github.com/octarine-public/wrapper/index"
 
-// --- МЕНЮ (Чисте та робоче) ---
+// Малюємо меню з іконкою
 const FeedMenu = Menu.AddEntry("Auto Feed Ultra", "panorama/images/items/travel_boots_png.vtex_c");
 const EnableFeed = FeedMenu.AddToggle("УВІМКНУТИ ФІД", false);
 const MySide = FeedMenu.AddToggle("Я за ТЬМУ (Dire)", false); 
@@ -19,42 +20,31 @@ EventsSDK.on("PostDataUpdate", () => {
     if (!EnableFeed.value) return;
 
     const currentTime = Date.now();
-    // Використовуємо 6 секунд для стабільності на Xeon [cite: 2025-10-12]
-    if (currentTime - lastActionTime < 6000) return;
+    // Стабільна затримка 5 секунд
+    if (currentTime - lastActionTime < 5000) return;
     lastActionTime = currentTime;
 
     const MyHero = LocalPlayer?.Hero;
     if (!MyHero) return;
 
-    const Target = MySide.value ? RadiantFountain : DireFountain;
+    const TargetPos = MySide.value ? RadiantFountain : DireFountain;
 
-    // --- ГОЛОВНИЙ МЕТОД: Команда всім підконтрольним ---
-    // Замість перебору масивів, ми кажемо читу: "Всі, ким я керую - йдіть туди"
-    try {
-        // Отримуємо список усіх юнітів, якими ти володієш (включаючи ліверів)
+    // 1. Рухаємо свого героя (Оригінальний метод, що працював)
+    if (MyHero.IsAlive) {
         // @ts-ignore
-        const myUnits = LocalPlayer.GetPlayer().GetControllableUnits();
-        
-        for (const unit of myUnits) {
-            // Фільтруємо, щоб це були саме герої (або кур'єри, якщо хочеш)
-            // @ts-ignore
-            if (unit && unit.IsAlive && (unit.IsHero || unit.IsCourier)) {
-                // @ts-ignore
-                unit.MoveTo(Target);
-            }
-        }
-    } catch (e) {
-        // Якщо GetControllableUnits не працює, пробуємо запасний варіант через Selection
+        MyHero.MoveTo(TargetPos);
+    }
+
+    // 2. Рухаємо союзників (Найпростіший метод через EntityManager)
+    const allEntities = EntityManager.GetEntitiesByClass("CDOTA_BaseNPC_Hero");
+    for (const ent of allEntities) {
+        // Якщо це герой, він живий і ТИ можеш ним керувати
         // @ts-ignore
-        const selected = LocalPlayer.GetSelection();
-        for (const entity of selected) {
+        if (ent && ent.IsAlive && ent.IsControllable) {
             // @ts-ignore
-            if (entity && entity.IsAlive) {
-                // @ts-ignore
-                entity.MoveTo(Target);
-            }
+            ent.MoveTo(TargetPos);
         }
     }
 });
 
-console.log("Deep Thought Feed: Використовуємо систему Player Units.");
+console.log("Back to Basics: Фід активовано.");
