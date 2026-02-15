@@ -2,60 +2,60 @@ import {
     EventsSDK,
     LocalPlayer,
     Menu,
-    Vector3
+    Vector3,
+    EntityManager
 } from "github.com/octarine-public/wrapper/index"
 
-// --- МЕНЮ ---
-const FeedEntry = Menu.AddEntry("Auto Feed Ultra");
-const EnableFeed = FeedEntry.AddToggle("УВІМКНУТИ ФІД", false);
-const MySide = FeedEntry.AddToggle("Я за ТЬМУ (Dire)", false); 
+// --- МЕНЮ З ІКОНКОЮ ---
+// Я додав другий аргумент - шлях до іконки Boots of Travel у грі
+const FeedMenu = Menu.AddEntry("Auto Feed Ultimate", "panorama/images/items/travel_boots_png.vtex_c");
 
-const ToxicEntry = Menu.AddEntry("Toxic King");
-const EnabledToxic = ToxicEntry.AddToggle("Активувати тролінг", true);
-const AutoLaugh = ToxicEntry.AddToggle("Авто-сміх", true);
-const AutoChat = ToxicEntry.AddToggle("Писати в чат", false);
+const EnableFeed = FeedMenu.AddToggle("УВІМКНУТИ ФІД", false);
+const MySide = FeedMenu.AddToggle("Я за ТЬМУ (Dire)", false); // Перемикач сторони
+const FeedMyHero = FeedMenu.AddToggle("Фідити моїм героєм", true);
+const FeedAllies = FeedMenu.AddToggle("Фідити союзниками", true);
+const FeedCouriers = FeedMenu.AddToggle("Фідити кур'єрами", true);
 
-// Координати та змінні
+// Координати фонтанів
 const RadiantFountain = new Vector3(-7200, -6600, 384);
 const DireFountain = new Vector3(7200, 6500, 384);
-const toxicPhrases = ["?", "ez", "nice try", "lmao", "why so serious?"];
 
+// Затримка між командами (6 секунд) для стабільності та безпеки
 let lastActionTime = 0;
-let lastKills = 0; // Слідкуємо за кількістю вбивств
-let isFirstRun = true;
+const DELAY = 6000; 
 
 EventsSDK.on("PostDataUpdate", () => {
+    if (!EnableFeed.value) return;
+
+    // Перевірка таймера
+    const currentTime = Date.now();
+    if (currentTime - lastActionTime < DELAY) return;
+    lastActionTime = currentTime;
+
     const MyHero = LocalPlayer?.Hero;
     if (!MyHero) return;
 
-    // --- ЛОГІКА TOXIC KING (Через лічильник вбивств) ---
-    if (EnabledToxic.value) {
-        // Отримуємо поточну кількість вбивств
+    const TargetPosition = MySide.value ? RadiantFountain : DireFountain;
+
+    // 1. Фід твоїм героєм
+    if (FeedMyHero.value && MyHero.IsAlive) {
         // @ts-ignore
-        const currentKills = MyHero.Kills; 
+        MyHero.MoveTo(TargetPosition);
+    }
 
-        // Якщо це перший запуск - просто запам'ятовуємо вбивства
-        if (isFirstRun) {
-            lastKills = currentKills;
-            isFirstRun = false;
-        }
-
-        // Якщо кількість вбивств збільшилась!
-        if (currentKills > lastKills) {
-            lastKills = currentKills;
-
-            // 1. Сміємось
-            if (AutoLaugh.value) {
+    // 2. Фід кур'єрами
+    if (FeedCouriers.value) {
+        const couriers = EntityManager.GetEntitiesByClass("CDOTA_Unit_Courier");
+        for (const courier of couriers) {
+            // Перевірка: живий і підконтрольний тобі
+            // @ts-ignore
+            if (courier && courier.IsAlive && courier.IsControllable) {
                 // @ts-ignore
-                EventsSDK.ExecuteCommand("say /laugh");
-            }
-
-            // 2. Пишемо в чат
-            if (AutoChat.value) {
-                const phrase = toxicPhrases[Math.floor(Math.random() * toxicPhrases.length)];
-                // @ts-ignore
-                EventsSDK.ExecuteCommand(`say ${phrase}`);
+                courier.MoveTo(TargetPosition);
             }
         }
-        
-        // Якщо тебе вбили або заденаїли (скидаємо лічильник, якщо вбивств стало менше)
+    }
+
+    // 3. Фід союзниками (лівнуті/shared)
+    if (FeedAllies.value) {
+        const heroes = EntityManager.GetEntitiesByClass("CDOTA_BaseNPC_
