@@ -2,19 +2,15 @@ import {
     EventsSDK,
     LocalPlayer,
     Menu,
-    Vector3,
-    Render,
-    Input
+    Vector3
 } from "github.com/octarine-public/wrapper/index"
 
-// --- МАКСИМАЛЬНО ПРОСТЕ МЕНЮ ---
-const Main = Menu.AddEntry("Denis_Final"); 
-const FeedToggle = Main.AddToggle("1. FEED ON", false);
-const TechiesToggle = Main.AddToggle("2. TECHIES ON", false);
-const DrawKey = Main.AddKeybind("3. Draw Key (Hold)", 0x46); // Клавіша F
+// Создаем меню БЕЗ иконок и БЕЗ подменю
+const Main = Menu.AddEntry("Denis_V11");
+const FeedOn = Main.AddToggle("1. FEED (Fountain)", false);
+const TechOn = Main.AddToggle("2. TECHIES (Auto)", false);
 
 let lastF = 0;
-let fDelay = 5000;
 let points: Vector3[] = [];
 
 EventsSDK.on("PostDataUpdate", () => {
@@ -22,43 +18,36 @@ EventsSDK.on("PostDataUpdate", () => {
     if (!Me || !Me.IsAlive) return;
     const now = Date.now();
 
-    // ФІДЕР (Твій робочий варіант)
-    if (FeedToggle.value && now - lastF > fDelay) {
+    // 1. ФИДЕР (Твой старый добрый код)
+    if (FeedOn.value && now - lastF > 5000) {
         lastF = now;
-        fDelay = Math.floor(Math.random() * 4000 + 4000);
-        const pos = new Vector3(7200, 6500, 384); // Спрощено для тесту
+        const target = new Vector3(-7200, -6600, 384); // Идет на фонтан света
         // @ts-ignore
-        Me.MoveTo(pos);
+        Me.MoveTo(target);
     }
 
-    // ТЕЧІС (Авто-каст на точки)
-    if (TechiesToggle.value && !DrawKey.value && points.length > 0) {
+    // 2. ТЕЧИС (Авто-минирование при нажатии на F)
+    // Если нажат бинд 'F' (0x46), добавляем точку под курсор
+    // @ts-ignore
+    if (TechOn.value && Me.UnitName === "npc_dota_hero_techies" && EventsSDK.IsKeyDown(0x46)) {
+        // @ts-ignore
+        const mouse = EventsSDK.GetMousePosWorld();
+        if (mouse && (points.length === 0 || mouse.Distance(points[points.length-1]) > 200)) {
+            points.push(mouse);
+        }
+    }
+
+    // Если точки есть - ставим мины
+    if (TechOn.value && points.length > 0 && now - lastF > 1000) {
         // @ts-ignore
         const mine = Me.GetAbility("techies_land_mines");
         if (mine && mine.CanBeCasted()) {
             // @ts-ignore
             Me.CastAbilityPosition(mine, points[0]);
             points.shift();
+            lastF = now;
         }
     }
 });
 
-// МАЛЮВАННЯ (Тільки коли затиснута клавіша)
-EventsSDK.on("OnWndProc", (msg, hwnd, wparam, lparam) => {
-    if (TechiesToggle.value && DrawKey.value && wparam === 0x01) {
-        const m = Input.GetCursorPosWorld();
-        if (m) points.push(m);
-    }
-});
-
-// МАЛЮВАННЯ КРУЖКІВ
-EventsSDK.on("OnDraw", () => {
-    if (TechiesToggle.value && points.length > 0) {
-        points.forEach(p => {
-            const s = Render.WorldToScreen(p);
-            if (s) Render.DrawCircle(s, 5, [255, 0, 0, 255], 2); // Червоні точки
-        });
-    }
-});
-
-console.log("LOADED");
+console.log("READY");
