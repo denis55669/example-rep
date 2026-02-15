@@ -7,22 +7,21 @@ import {
 } from "github.com/octarine-public/wrapper/index"
 
 // --- МЕНЮ ---
-const Entry = Menu.AddEntry("Auto Feed Ultra")
+const Entry = Menu.AddEntry("Auto Feed Fixed")
 const EnableFeed = Entry.AddToggle("УВІМКНУТИ ФІД", false)
 const MySide = Entry.AddToggle("Я за ТЬМУ (Dire)", false) 
 
 const RadiantFountain = new Vector3(-7200, -6600, 384)
 const DireFountain = new Vector3(7200, 6500, 384)
 
-// Затримка зафіксована на 5000 мс (5 секунд)
-const FIXED_DELAY = 5000 
 let lastClickTime = 0
+const DELAY = 5000 // 5 секунд між кліками для безпеки
 
 EventsSDK.on("PostDataUpdate", () => {
     if (!EnableFeed.value) return
 
     const currentTime = Date.now()
-    if (currentTime - lastClickTime < FIXED_DELAY) return
+    if (currentTime - lastClickTime < DELAY) return
     lastClickTime = currentTime
 
     const MyHero = LocalPlayer?.Hero
@@ -30,25 +29,21 @@ EventsSDK.on("PostDataUpdate", () => {
 
     const TargetPos = MySide.value ? RadiantFountain : DireFountain
 
-    // 1. ФІДИМО ГЕРОЯМИ (ТИ + ЛІВНУТІ/SHARED)
-    const heroes = EntityManager.GetEntitiesByClass("CDOTA_BaseNPC_Hero")
-    for (const hero of heroes) {
-        // @ts-ignore
-        if (hero && hero.IsAlive && hero.IsControllable) {
-            // @ts-ignore
-            hero.MoveTo(TargetPos)
-        }
-    }
+    // ШУКАЄМО ВСІХ ЮНІТІВ (Герої, кур'єри, закликані істоти)
+    const allEntities = EntityManager.GetEntities()
 
-    // 2. ФІДИМО КУР'ЄРАМИ
-    const couriers = EntityManager.GetEntitiesByClass("CDOTA_Unit_Courier")
-    for (const courier of couriers) {
+    for (const entity of allEntities) {
         // @ts-ignore
-        if (courier && courier.IsAlive && courier.IsControllable) {
+        if (entity && entity.IsAlive && entity.IsControllable) {
+            
+            // Перевірка, щоб не фідити будівлями або ворогами
             // @ts-ignore
-            courier.MoveTo(TargetPos)
+            if (entity.TeamNum === MyHero.TeamNum) {
+                // @ts-ignore
+                entity.MoveTo(TargetPos)
+            }
         }
     }
 })
 
-console.log("Safe Ultra Feed: Кліки кожні 5 секунд. Кур'єри + Герої.")
+console.log("Скрипт Дениса: Універсальний фід (5 сек затримка) завантажено!")
