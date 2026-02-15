@@ -34,3 +34,41 @@ EventsSDK.on("PostDataUpdate", () => {
 });
 
 console.log("Auto Feed: Только мой герой, клики раз в 5 секунд.");
+import {
+    EventsSDK,
+    LocalPlayer,
+    Menu,
+    EntitySystem
+} from "github.com/octarine-public/wrapper/index"
+
+const Entry = Menu.AddEntry("Toxic King");
+const Enabled = Entry.AddToggle("Активувати тролінг", true);
+const AutoLaugh = Entry.AddToggle("Авто-сміх при вбивстві", true);
+const AutoChat = Entry.AddToggle("Писати '?' у чат", false);
+
+const toxicPhrases = ["?", "ez", "nice try", "lmao", "why so serious?"];
+
+EventsSDK.on("EntityKilled", (victim, killer) => {
+    if (!Enabled.value || !killer || !victim) return;
+
+    const MyHero = LocalPlayer?.Hero;
+    
+    // Перевіряємо, чи вбивство зробив ти
+    if (killer === MyHero) {
+        
+        // 1. Авто-сміх
+        if (AutoLaugh.value) {
+            // @ts-ignore
+            EventsSDK.ExecuteCommand("say /laugh");
+        }
+
+        // 2. Рандомна фраза в чат
+        if (AutoChat.value) {
+            const phrase = toxicPhrases[Math.floor(Math.random() * toxicPhrases.length)];
+            // @ts-ignore
+            EventsSDK.ExecuteCommand(`say ${phrase}`);
+        }
+    }
+});
+
+console.log("Toxic King завантажено! Покажи їм, хто тут батя.");
