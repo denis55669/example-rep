@@ -1,35 +1,43 @@
 import { EventsSDK, Menu, GameEntitySystem } from "github.com/octarine-public/wrapper/index"
 
-// 1. Створюємо вкладку "Денис"
+// --- МЕНЮ (Твоє, робоче) ---
 const MyTab = Menu.AddEntry("Денис");
 
-// 2. Додаємо твої елементи (камера + армлет)
+// Камера і Авто-прийняття
 const CameraSlider = MyTab.AddSlider("Дистанція камери", 1200, 2500, 1600);
-const AutoArmletToggle = MyTab.AddToggle("Авто-Армлет", true);
-const HpSlider = MyTab.AddSlider("ХП для абузу", 200, 600, 400);
+const AutoAcceptToggle = MyTab.AddToggle("Авто-прийняття", true);
 
-// 3. Основна функція
+// --- ДОДАЄМО АРМЛЕТ СЮДИ ---
+const AutoArmletToggle = MyTab.AddToggle("Авто-Армлет", true);
+const HpSlider = MyTab.AddSlider("Поріг ХП", 200, 800, 450);
+
+// --- ЛОГІКА ---
 EventsSDK.on("Update", () => {
-    // Камера (твій робочий код)
-    if (typeof Camera !== 'undefined') {
+    // 1. Камера (Твій код)
+    if (CameraSlider) {
         // @ts-ignore
-        Camera.Distance = CameraSlider.Value;
+        if (typeof Camera !== 'undefined') {
+            // @ts-ignore
+            Camera.Distance = CameraSlider.Value;
+        }
     }
 
-    // Логіка Армлета (спрощена, щоб не було помилок)
+    // 2. Армлет (Додаємо перевірку)
     const me = GameEntitySystem.getLocalPlayer();
-    if (me && AutoArmletToggle.Value) {
+    
+    // Перевіряємо: чи увімкнено в меню, чи живий герой
+    if (me && me.isAlive() && AutoArmletToggle.Value) {
         const armlet = me.getItemByName("item_armlet");
+        
+        // Якщо армлет є і готовий до використання
         if (armlet && armlet.isReady()) {
-            // Отримуємо ХП через властивість Health (як у багатьох версіях враппера)
-            // @ts-ignore
-            const myHp = me.Health || 0; 
-            
-            if (myHp > 0 && myHp <= HpSlider.Value) {
-                armlet.cast(); // Перемикаємо
+            const hp = me.getHealth();
+            // Якщо ХП менше, ніж виставлено на повзунку
+            if (hp <= HpSlider.Value && !me.hasModifier("modifier_ice_blast")) {
+                 armlet.cast(); // Клацаємо
             }
         }
     }
 });
 
-console.log("Скрипт Дениса успішно завантажено!");
+console.log("Скрипт Дениса (Full) успішно завантажено!");
