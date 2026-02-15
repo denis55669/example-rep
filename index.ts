@@ -2,21 +2,20 @@ import {
     EventsSDK,
     LocalPlayer,
     Menu,
-    Vector3
+    Vector3,
+    Player,
+    Enum
 } from "github.com/octarine-public/wrapper/index"
 
-// --- ГОЛОВНА ПАПКА (Denis Scripts) ---
-const Root = Menu.AddEntry("Denis_Scripts", "panorama/images/items/travel_boots_png.vtex_c");
+// --- МЕНЮ ---
+const Root = Menu.AddEntry("Denis_Scripts_V18", "panorama/images/items/travel_boots_png.vtex_c");
 
-// --- ВКЛАДКА 1: ФІДЕР (Окрема папка в меню) ---
 const FeedFolder = Root.AddEntry("Auto Feeder");
 const FeedDire = FeedFolder.AddToggle("Фід за DIRE (ТЬМА)", false);
 const FeedRad = FeedFolder.AddToggle("Фід за RADIANT (СВІТЛО)", false);
 
-// --- ВКЛАДКА 2: ЧАТ (Окрема папка в меню) ---
 const ChatFolder = Root.AddEntry("Chat Spam");
 const RollSpam = ChatFolder.AddToggle("Спам /roll", false);
-const RollDelay = ChatFolder.AddSlider("Затримка (мс)", 500, 5000, 2000);
 
 let lastF = 0;
 let lastR = 0;
@@ -26,29 +25,30 @@ EventsSDK.on("PostDataUpdate", () => {
     if (!Me || !Me.IsAlive) return;
     const now = Date.now();
 
-    // 1. ЛОГІКА ЧАТУ (Спам /roll)
-    if (RollSpam.value && now - lastR > RollDelay.value) {
-        lastR = now;
-        // @ts-ignore
-        EventsSDK.ExecuteCommand("say /roll");
-    }
+    // 1. СИЛОВИЙ ФІД (Через PrepareOrder)
+    if (now - lastF > 3000) {
+        let targetPos: Vector3 | null = null;
 
-    // 2. ЛОГІКА ФІДУ (Твоя перевірена версія)
-    if (now - lastF > 5000) {
         if (FeedDire.value) {
-            // Біжимо на фонтан Світлих
-            const target = new Vector3(-7200, -6600, 384);
-            // @ts-ignore
-            Me.MoveTo(target);
-            lastF = now;
+            targetPos = new Vector3(-7200, -6600, 384); // На фонтан Світлих
         } else if (FeedRad.value) {
-            // Біжимо на фонтан Тьми
-            const target = new Vector3(7200, 6500, 384);
-            // @ts-ignore
-            Me.MoveTo(target);
+            targetPos = new Vector3(7200, 6500, 384);   // На фонтан Тьми
+        }
+
+        if (targetPos) {
+            // Використовуємо прямий наказ гравця, який неможливо заблокувати
+            Player.PrepareOrder(LocalPlayer.RawPlayer, Enum.UnitOrder.DOTA_UNIT_ORDER_MOVE_TO_POSITION, 0, targetPos, 0, Me, false, true);
             lastF = now;
         }
     }
+
+    // 2. СПАМ /roll
+    if (RollSpam.value && now - lastR > 2500) {
+        lastR = now;
+        // Спробуємо через інший метод виконання команди
+        // @ts-ignore
+        EventsSDK.ExecuteCommand("say /roll");
+    }
 });
 
-console.log("Denis V17: Modular Menu Loaded!");
+console.log("Denis V18: Force Order Loaded!");
