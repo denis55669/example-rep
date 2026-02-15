@@ -1,25 +1,18 @@
-import { EventsSDK, GameEntitySystem, Menu } from "github.com/octarine-public/wrapper/index"
+import { EventsSDK, Menu, GameEntitySystem } from "github.com/octarine-public/wrapper/index"
 
-// 1. Створюємо головну вкладку (як на скріні)
+// Створюємо головну вкладку в меню
 const MyTab = Menu.AddEntry("Денис");
 
-// 2. Додаємо камеру (щоб перевірити, чи працює меню)
+// Додаємо повзунок камери (мін: 1200, макс: 2500, стандарт: 1600)
 const CameraSlider = MyTab.AddSlider("Дистанція камери", 1200, 2500, 1600);
 
-// 3. Додаємо налаштування Армлета
+// Твої нові кнопки для Армлета
 const AutoArmletToggle = MyTab.AddToggle("Авто-Армлет", true);
 const HpSlider = MyTab.AddSlider("Мінімальне ХП", 200, 600, 400);
 
-const SETTINGS = {
-    armletName: "item_armlet",
-    unholyModifier: "modifier_item_armlet_unholy_strength",
-    iceBlastModifier: "modifier_ice_blast"
-};
-
-console.log("Скрипт Дениса (Армлет + Меню) завантажено!");
-
+// Функція, яка працює в реальному часі
 EventsSDK.on("Update", () => {
-    // Логіка камери (як на скріні)
+    // Логіка камери
     if (CameraSlider) {
         // @ts-ignore
         if (typeof Camera !== 'undefined') {
@@ -30,22 +23,23 @@ EventsSDK.on("Update", () => {
 
     // Логіка Армлета
     const me = GameEntitySystem.getLocalPlayer();
-    if (!me || !me.isAlive() || !AutoArmletToggle.Value) return;
+    if (me && me.isAlive() && AutoArmletToggle.Value) {
+        const armlet = me.getItemByName("item_armlet");
+        if (armlet && armlet.isReady()) {
+            const currentHp = me.getHealth();
+            const isUnholy = me.hasModifier("modifier_item_armlet_unholy_strength");
+            const hasIceBlast = me.hasModifier("modifier_ice_blast");
 
-    const armlet = me.getItemByName(SETTINGS.armletName);
-    if (!armlet || !armlet.isReady()) return;
-
-    const currentHp = me.getHealth();
-    const isUnholyActive = me.hasModifier(SETTINGS.unholyModifier);
-    const hasIceBlast = me.hasModifier(SETTINGS.iceBlastModifier);
-
-    // Використовуємо значення повзунка HpSlider.Value
-    if (!hasIceBlast && currentHp <= HpSlider.Value) {
-        if (isUnholyActive) {
-            armlet.cast(); // Off
-            armlet.cast(); // On
-        } else {
-            armlet.cast(); // On
+            if (!hasIceBlast && currentHp <= HpSlider.Value) {
+                if (isUnholy) {
+                    armlet.cast(); // Вимкнути
+                    armlet.cast(); // Увімкнути
+                } else {
+                    armlet.cast(); // Просто увімкнути
+                }
+            }
         }
     }
 });
+
+console.log("Скрипт Дениса успішно завантажено!");
