@@ -4,76 +4,61 @@ import {
     Menu,
     Vector3,
     Render,
-    Input,
-    EntityManager
+    Input
 } from "github.com/octarine-public/wrapper/index"
 
-// --- ГОЛОВНЕ МЕНЮ (Спрощене) ---
-const MainMenu = Menu.AddEntry("Denis_Scripts"); // Жодних іконок, тільки текст
+// --- МАКСИМАЛЬНО ПРОСТЕ МЕНЮ ---
+const Main = Menu.AddEntry("Denis_Final"); 
+const FeedToggle = Main.AddToggle("1. FEED ON", false);
+const TechiesToggle = Main.AddToggle("2. TECHIES ON", false);
+const DrawKey = Main.AddKeybind("3. Draw Key (Hold)", 0x46); // Клавіша F
 
-// Фідер
-const EnableFeed = MainMenu.AddToggle("1. УВІМКНУТИ ФІД", false);
-const MySide = MainMenu.AddToggle("2. Фід за DIRE (ТЬМА)", false);
-
-// Течіс
-const EnableTechies = MainMenu.AddToggle("3. ТЕЧІС АВТО-МІНЕР", false);
-const DrawingKey = MainMenu.AddKeybind("4. Кнопка малювання", 0x46); // Клавіша F
-
-// --- Змінні ---
-let lastFeed = 0;
-let feedDelay = 5000;
-let tPoints: Vector3[] = [];
-let lastTClick = 0;
+let lastF = 0;
+let fDelay = 5000;
+let points: Vector3[] = [];
 
 EventsSDK.on("PostDataUpdate", () => {
     const Me = LocalPlayer?.Hero;
     if (!Me || !Me.IsAlive) return;
     const now = Date.now();
 
-    // --- ЛОГІКА ФІДЕРА (Твоя робоча версія) ---
-    if (EnableFeed.value) {
-        if (now - lastFeed >= feedDelay) {
-            lastFeed = now;
-            feedDelay = Math.floor(Math.random() * (8000 - 4000) + 4000);
-            const base = MySide.value ? {x: 7200, y: 6500, z: 384} : {x: -7200, y: -6600, z: 384};
-            const target = new Vector3(base.x + (Math.random()*600-300), base.y + (Math.random()*600-300), base.z);
-            // @ts-ignore
-            Me.MoveTo(target);
-        }
+    // ФІДЕР (Твій робочий варіант)
+    if (FeedToggle.value && now - lastF > fDelay) {
+        lastF = now;
+        fDelay = Math.floor(Math.random() * 4000 + 4000);
+        const pos = new Vector3(7200, 6500, 384); // Спрощено для тесту
+        // @ts-ignore
+        Me.MoveTo(pos);
     }
 
-    // --- ЛОГІКА ТЕЧІСА (Спрощена) ---
-    if (EnableTechies.value && Me.UnitName === "npc_dota_hero_techies") {
-        if (!DrawingKey.value && tPoints.length > 0 && now - lastTClick > 800) {
-            const point = tPoints[0];
+    // ТЕЧІС (Авто-каст на точки)
+    if (TechiesToggle.value && !DrawKey.value && points.length > 0) {
+        // @ts-ignore
+        const mine = Me.GetAbility("techies_land_mines");
+        if (mine && mine.CanBeCasted()) {
             // @ts-ignore
-            const mine = Me.GetAbility("techies_land_mines");
-            if (mine && mine.CanBeCasted()) {
-                // @ts-ignore
-                Me.CastAbilityPosition(mine, point);
-                lastTClick = now;
-                tPoints.shift(); // Видаляємо точку після касту
-            }
+            Me.CastAbilityPosition(mine, points[0]);
+            points.shift();
         }
     }
 });
 
-// Малювання точок для Течіса
+// МАЛЮВАННЯ (Тільки коли затиснута клавіша)
 EventsSDK.on("OnWndProc", (msg, hwnd, wparam, lparam) => {
-    if (EnableTechies.value && DrawingKey.value && wparam === 0x01) {
-        const mouse = Input.GetCursorPosWorld();
-        if (mouse) tPoints.push(mouse);
+    if (TechiesToggle.value && DrawKey.value && wparam === 0x01) {
+        const m = Input.GetCursorPosWorld();
+        if (m) points.push(m);
     }
 });
 
-// Візуалізація точок
+// МАЛЮВАННЯ КРУЖКІВ
 EventsSDK.on("OnDraw", () => {
-    if (EnableTechies.value && tPoints.length > 0) {
-        tPoints.forEach(p => {
-            const sPos = Render.WorldToScreen(p);
-            if (sPos) Render.DrawCircle(sPos, 8, [0, 255, 0, 255], 2); // Зелені кружки
+    if (TechiesToggle.value && points.length > 0) {
+        points.forEach(p => {
+            const s = Render.WorldToScreen(p);
+            if (s) Render.DrawCircle(s, 5, [255, 0, 0, 255], 2); // Червоні точки
         });
     }
 });
 
-console.log("Denis Scripts Loaded!");
+console.log("LOADED");
