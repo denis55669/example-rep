@@ -4,46 +4,39 @@ import {
     Menu
 } from "github.com/octarine-public/wrapper/index"
 
-// --- СТВОРЮЄМО МЕНЮ ---
+// --- МЕНЮ (Только Армлет) ---
 const Entry = Menu.AddEntry("Денис")
-const CameraSlider = Entry.AddSlider("Дистанція камери", 1200, 2500, 1600)
 const AutoArmletToggle = Entry.AddToggle("Авто-Армлет", true)
 const HpSlider = Entry.AddSlider("Поріг ХП Армлет", 200, 800, 450)
 
-// --- ОСНОВНИЙ ЦИКЛ ---
+// --- ЛОГІКА ---
 EventsSDK.on("PostDataUpdate", () => {
     const MyHero = LocalPlayer?.Hero
     
-    // 1. Камера (як на твоїх скрінах)
-    if (typeof Camera !== 'undefined') {
-        // @ts-ignore
-        Camera.Distance = CameraSlider.value
-    }
-
-    // 2. Логіка Армлета
+    // Если выключено, герой мертв или это не твой герой — ничего не делаем
     if (!AutoArmletToggle.value || MyHero === undefined || !MyHero.IsAlive) {
         return
     }
 
+    // Ищем Армлет
     const armlet = MyHero.GetItemByName("item_armlet")
     
-    // Перевірка чи предмет готовий і чи це саме Армлет
     if (armlet !== undefined && armlet.CanBeCasted()) {
         const currentHp = MyHero.Health
         const isUnholy = MyHero.HasModifier("modifier_item_armlet_unholy_strength")
 
-        // Якщо ХП впало нижче налаштування в меню
+        // Абуз при низком ХП (по значению ползунка)
         if (currentHp <= HpSlider.value && !MyHero.HasModifier("modifier_ice_blast")) {
             if (isUnholy) {
-                // Швидкий переклик (Вимкнути -> Увімкнути)
+                // Выключаем и включаем (Double Cast)
                 MyHero.CastNoTarget(armlet)
                 MyHero.CastNoTarget(armlet)
             } else {
-                // Якщо був вимкнений — просто вмикаємо
+                // Если был выключен — просто включаем
                 MyHero.CastNoTarget(armlet)
             }
         }
     }
 })
 
-console.log("Скрипт Дениса успішно завантажено локально!")
+console.log("Скрипт Дениса: Камера удалена, Армлет готов!");
