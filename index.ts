@@ -8,75 +8,96 @@ import {
     EntityManager
 } from "github.com/octarine-public/wrapper/index"
 
-// --- МЕНЮ TECHIES AUTO-MINER ---
-const Main = Menu.AddEntry("Denis_Techies_V1");
-const Enable = Main.AddToggle("1. Включить скрипт", false);
-const DrawingMode = Main.AddKeybind("2. Режим рисования (F10)", 0x79); // F10
-const MineDistance = Main.AddSlider("3. Дистанция между минами", 300, 500, 400);
+// --- ОБЩЕЕ МЕНЮ (Denis All-in-One) ---
+const MainMenu = Menu.AddEntry("Denis_Mega_Pack", "panorama/images/items/travel_boots_png.vtex_c");
 
-let points: Vector3[] = [];
-let isDrawing = false;
-let lastCastTime = 0;
+// --- СЕКЦИЯ ФИДЕРА ---
+const FeedTab = MainMenu.AddEntry("Auto Feed Ultra");
+const EnableFeed = FeedTab.AddToggle("УВІМКНУТИ ФІД", false);
+const MySide = FeedTab.AddToggle("Я за ТЬМУ (Dire)", false);
 
-// Логика рисования (как в видео)
+// --- СЕКЦИЯ ТЕЧИСА ---
+const TechiesTab = MainMenu.AddEntry("Techies Miner");
+const EnableTechies = TechiesTab.AddToggle("Включить Течиса", false);
+const DrawingMode = TechiesTab.AddKeybind("Режим рисования (F10)", 0x79); // F10
+const MineDistance = TechiesTab.AddSlider("Дистанция мин", 300, 500, 400);
+
+// Переменные для фида
+let lastFeedTime = 0;
+let nextFeedDelay = 5000;
+const RadiantFountain = { x: -7200, y: -6600, z: 384 };
+const DireFountain = { x: 7200, y: 6500, z: 384 };
+
+// Переменные для Течиса
+let techiesPoints: Vector3[] = [];
+let lastTechiesCast = 0;
+
+// Логика кликов для рисования Течиса
 EventsSDK.on("OnWndProc", (msg, hwnd, wparam, lparam) => {
-    if (!Enable.value || !DrawingMode.value) return;
-
+    if (!EnableTechies.value || !DrawingMode.value) return;
     if (wparam === 0x01) { // Левая кнопка мыши
         const mousePos = Input.GetCursorPosWorld();
-        if (mousePos) {
-            points.push(mousePos);
-            console.log("Точка добавлена: " + points.length);
-        }
+        if (mousePos) techiesPoints.push(mousePos);
     }
 });
 
 EventsSDK.on("PostDataUpdate", () => {
-    if (!Enable.value) return;
     const Me = LocalPlayer?.Hero;
-    if (!Me || !Me.IsAlive || Me.UnitName !== "npc_dota_hero_techies") return;
-
+    if (!Me || !Me.IsAlive) return;
     const now = Date.now();
-    if (now - lastCastTime < 1000) return; // Задержка для Xeon [cite: 2025-10-12]
 
-    // Если мы не рисуем, начинаем минирование точек
-    if (!DrawingMode.value && points.length > 0) {
-        const target = points[0];
-        
-        // Проверяем, нет ли уже мины рядом
-        const nearbyMines = EntityManager.GetEntitiesByClass("npc_dota_techies_proximity_mine");
-        const isOccupied = nearbyMines.some(m => m.DistanceTo(target) < MineDistance.value);
+    // --- ЛОГИКА ТЕЧИСА ---
+    if (EnableTechies.value && Me.UnitName === "npc_dota_hero_techies") {
+        if (!DrawingMode.value && techiesPoints.length > 0 && now - lastTechiesCast > 1000) {
+            const target = techiesPoints[0];
+            const mines = EntityManager.GetEntitiesByClass("npc_dota_techies_proximity_mine");
+            const isOccupied = mines.some(m => m.DistanceTo(target) < MineDistance.value);
 
-        if (!isOccupied) {
-            // @ts-ignore
-            const mineAbility = Me.GetAbility("techies_land_mines");
-            if (mineAbility && mineAbility.CanBeCasted()) {
+            if (!isOccupied) {
                 // @ts-ignore
-                Me.CastAbilityPosition(mineAbility, target);
-                lastCastTime = now;
-                console.log("Ставлю мину в точку!");
+                const ability = Me.GetAbility("techies_land_mines");
+                if (ability && ability.CanBeCasted()) {
+                    // @ts-ignore
+                    Me.CastAbilityPosition(ability, target);
+                    lastTechiesCast = now;
+                }
+            } else {
+                techiesPoints.shift(); // Убираем точку, если там уже стоит мина
             }
-        } else {
-            // Если точка занята, переходим к следующей
-            points.shift();
+        }
+    }
+
+    // --- ЛОГИКА ФИДЕРА ---
+    if (EnableFeed.value) {
+        if (now - lastFeedTime >= nextFeedDelay) {
+            lastFeedTime = now;
+            nextFeedDelay = Math.floor(Math.random() * (8000 - 4000) + 4000);
+
+            const basePos = MySide.value ? RadiantFountain : DireFountain;
+            const target = new Vector3(
+                basePos.x + (Math.random() * 600 - 300),
+                basePos.y + (Math.random() * 600 - 300),
+                basePos.z
+            );
+            // @ts-ignore
+            Me.MoveTo(target);
         }
     }
 });
 
-// Визуализация (как в видео)
+// Отрисовка точек Течиса
 EventsSDK.on("OnDraw", () => {
-    if (!Enable.value || points.length === 0) return;
-
-    for (let i = 0; i < points.length; i++) {
-        const screenPos = Render.WorldToScreen(points[i]);
+    if (!EnableTechies.value || techiesPoints.length === 0) return;
+    for (let i = 0; i < techiesPoints.length; i++) {
+        const screenPos = Render.WorldToScreen(techiesPoints[i]);
         if (screenPos) {
             Render.DrawCircle(screenPos, 10, [255, 255, 255, 255], 2);
             if (i > 0) {
-                const prevScreen = Render.WorldToScreen(points[i-1]);
-                if (prevScreen) Render.DrawLine(prevScreen, screenPos, [255, 255, 0, 255], 1);
+                const prev = Render.WorldToScreen(techiesPoints[i-1]);
+                if (prev) Render.DrawLine(prev, screenPos, [255, 255, 0, 255], 1);
             }
         }
     }
 });
 
-console.log("Techies Auto-Miner V1 Loaded. Нажми F10 для рисования!");
+console.log("Denis Pack: Feed + Techies loaded!");
