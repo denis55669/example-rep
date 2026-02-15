@@ -1,19 +1,19 @@
-import { EventsSDK, Menu, GameEntitySystem } from "github.com/octarine-public/wrapper/index"
+import { EventsSDK, Menu } from "github.com/octarine-public/wrapper/index"
 
-// --- МЕНЮ (Твоє, робоче) ---
+// 1. Створюємо головну вкладку "Денис"
 const MyTab = Menu.AddEntry("Денис");
 
-// Камера і Авто-прийняття
+// 2. Додаємо Камеру і Авто-прийняття (це в тебе працювало)
 const CameraSlider = MyTab.AddSlider("Дистанція камери", 1200, 2500, 1600);
 const AutoAcceptToggle = MyTab.AddToggle("Авто-прийняття", true);
 
-// --- ДОДАЄМО АРМЛЕТ СЮДИ ---
+// 3. Додаємо кнопки для Армлета (Візуальна частина)
 const AutoArmletToggle = MyTab.AddToggle("Авто-Армлет", true);
-const HpSlider = MyTab.AddSlider("Поріг ХП", 200, 800, 450);
+const HpSlider = MyTab.AddSlider("Поріг ХП Армлет", 200, 800, 450);
 
-// --- ЛОГІКА ---
+// Основна функція
 EventsSDK.on("Update", () => {
-    // 1. Камера (Твій код)
+    // Логіка камери (працює)
     if (CameraSlider) {
         // @ts-ignore
         if (typeof Camera !== 'undefined') {
@@ -22,22 +22,8 @@ EventsSDK.on("Update", () => {
         }
     }
 
-    // 2. Армлет (Додаємо перевірку)
-    const me = GameEntitySystem.getLocalPlayer();
-    
-    // Перевіряємо: чи увімкнено в меню, чи живий герой
-    if (me && me.isAlive() && AutoArmletToggle.Value) {
-        const armlet = me.getItemByName("item_armlet");
-        
-        // Якщо армлет є і готовий до використання
-        if (armlet && armlet.isReady()) {
-            const hp = me.getHealth();
-            // Якщо ХП менше, ніж виставлено на повзунку
-            if (hp <= HpSlider.Value && !me.hasModifier("modifier_ice_blast")) {
-                 armlet.cast(); // Клацаємо
-            }
-        }
-    }
+    // ТУТ БУДЕ ЛОГІКА АРМЛЕТА
+    // Ми підключимо її, як тільки дізнаємося, як правильно називається імпорт у твоїй версії
 });
 
-console.log("Скрипт Дениса (Full) успішно завантажено!");
+console.log("Скрипт Дениса (Меню) завантажено!");
