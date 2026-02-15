@@ -2,75 +2,60 @@ import {
     EventsSDK,
     LocalPlayer,
     Menu,
-    Vector3,
-    EntitySystem
+    Vector3
 } from "github.com/octarine-public/wrapper/index"
 
-// --- ЗАГАЛЬНЕ МЕНЮ ---
+// --- МЕНЮ ---
 const FeedEntry = Menu.AddEntry("Auto Feed Ultra");
 const EnableFeed = FeedEntry.AddToggle("УВІМКНУТИ ФІД", false);
 const MySide = FeedEntry.AddToggle("Я за ТЬМУ (Dire)", false); 
 
 const ToxicEntry = Menu.AddEntry("Toxic King");
 const EnabledToxic = ToxicEntry.AddToggle("Активувати тролінг", true);
-const AutoLaugh = ToxicEntry.AddToggle("Авто-сміх при вбивстві", true);
-const AutoChat = ToxicEntry.AddToggle("Писати '?' у чат", false);
+const AutoLaugh = ToxicEntry.AddToggle("Авто-сміх", true);
+const AutoChat = ToxicEntry.AddToggle("Писати в чат", false);
 
-// Координати та налаштування
+// Координати та змінні
 const RadiantFountain = new Vector3(-7200, -6600, 384);
 const DireFountain = new Vector3(7200, 6500, 384);
 const toxicPhrases = ["?", "ez", "nice try", "lmao", "why so serious?"];
 
 let lastActionTime = 0;
-const FEED_DELAY = 5000; // 5 секунд
+let lastKills = 0; // Слідкуємо за кількістю вбивств
+let isFirstRun = true;
 
-// --- ЛОГІКА АВТО-ФІДУ ---
 EventsSDK.on("PostDataUpdate", () => {
-    if (!EnableFeed.value) return;
-
-    const currentTime = Date.now();
-    if (currentTime - lastActionTime < FEED_DELAY) return;
-    lastActionTime = currentTime;
-
     const MyHero = LocalPlayer?.Hero;
-    if (!MyHero || !MyHero.IsAlive) return;
+    if (!MyHero) return;
 
-    const TargetPosition = MySide.value ? RadiantFountain : DireFountain;
+    // --- ЛОГІКА TOXIC KING (Через лічильник вбивств) ---
+    if (EnabledToxic.value) {
+        // Отримуємо поточну кількість вбивств
+        // @ts-ignore
+        const currentKills = MyHero.Kills; 
 
-    // @ts-ignore
-    MyHero.MoveTo(TargetPosition);
-});
+        // Якщо це перший запуск - просто запам'ятовуємо вбивства
+        if (isFirstRun) {
+            lastKills = currentKills;
+            isFirstRun = false;
+        }
 
-// --- ЛОГІКА TOXIC KING ---
-// Використовуємо GameEvent для точного відстеження вбивств
-EventsSDK.on("GameEvent", (event) => {
-    if (!EnabledToxic.value) return;
-    
-    // Перевіряємо подію вбивства
-    if (event.name === "entity_killed") {
-        const MyHero = LocalPlayer?.Hero;
-        if (!MyHero) return;
+        // Якщо кількість вбивств збільшилась!
+        if (currentKills > lastKills) {
+            lastKills = currentKills;
 
-        // Отримуємо індекс вбивці з події
-        const killerIndex = event.getInt("entindex_attacker");
-        
-        // Якщо вбивця — це ти
-        if (killerIndex === MyHero.Index) {
-            
-            // 1. Авто-сміх
+            // 1. Сміємось
             if (AutoLaugh.value) {
                 // @ts-ignore
                 EventsSDK.ExecuteCommand("say /laugh");
             }
 
-            // 2. Рандомна фраза
+            // 2. Пишемо в чат
             if (AutoChat.value) {
                 const phrase = toxicPhrases[Math.floor(Math.random() * toxicPhrases.length)];
                 // @ts-ignore
                 EventsSDK.ExecuteCommand(`say ${phrase}`);
             }
         }
-    }
-});
-
-console.log("Скрипти Дениса об'єднано та активовано!");
+        
+        // Якщо тебе вбили або заденаїли (скидаємо лічильник, якщо вбивств стало менше)
