@@ -7,55 +7,43 @@ import {
 } from "github.com/octarine-public/wrapper/index"
 
 // --- МЕНЮ ---
-const FeedMenu = Menu.AddEntry("Auto Feed");
-const EnableFeed = FeedMenu.AddToggle("УВІМКНУТИ ФІД", false);
-const MySide = FeedMenu.AddToggle("Я за ТЬМУ (Dire)", false); // Зміни, якщо біжать додому
-const FeedMyHero = FeedMenu.AddToggle("Фідити моїм героєм", true);
-const FeedOthers = FeedMenu.AddToggle("Фідити всіма підконтрольними", true);
+const Entry = Menu.AddEntry("Auto Feed")
+const EnableFeed = Entry.AddToggle("УВІМКНУТИ ФІД", false)
+const MySide = Entry.AddToggle("Я за ТЬМУ (Dire)", false)
+const FeedMyHero = Entry.AddToggle("Фідити моїм героєм", true)
+const FeedOthers = Entry.AddToggle("Фідити союзниками/кур'єрами", true)
 
-// Координати фонтанів
-const RadiantFountain = new Vector3(-7200, -6600, 384);
-const DireFountain = new Vector3(7200, 6500, 384);
+const RadiantFountain = new Vector3(-7200, -6600, 384)
+const DireFountain = new Vector3(7200, 6500, 384)
 
 EventsSDK.on("PostDataUpdate", () => {
-    // Якщо фід вимкнений - виходимо
-    if (!EnableFeed.value) return;
+    if (!EnableFeed.value) return
 
-    const MyHero = LocalPlayer?.Hero;
-    if (!MyHero) return;
+    const MyHero = LocalPlayer?.Hero
+    if (MyHero === undefined) return
 
-    // Визначаємо ціль (Ворожий фонтан)
-    const TargetPosition = MySide.value ? RadiantFountain : DireFountain;
+    const TargetPos = MySide.value ? RadiantFountain : DireFountain
 
-    // 1. Отримуємо ВСІХ NPC (Герої, Кур'єри, Крипи)
-    // "CDOTA_BaseNPC" - це базовий клас для всього живого в Доті
-    const allUnits = EntityManager.GetEntitiesByClass("CDOTA_BaseNPC");
-
-    for (const unit of allUnits) {
-        // Перевірки:
-        // 1. Живий?
-        // 2. Наш? (TeamNum збігається)
-        // 3. Чи можемо ми керувати? (IsControllable - ключова перевірка для лівнутих/курьерів)
+    // 1. Фід моїм героєм
+    if (FeedMyHero.value && MyHero.IsAlive) {
         // @ts-ignore
-        if (!unit || !unit.IsAlive || unit.TeamNum !== MyHero.TeamNum || !unit.IsControllable) {
-            continue;
-        }
-
-        // Логіка для МЕНЕ
-        if (unit === MyHero) {
-            if (FeedMyHero.value) {
-                // @ts-ignore
-                unit.MoveTo(TargetPosition);
-            }
-            continue;
-        }
-
-        // Логіка для ВСІХ ІНШИХ (Кур'єри, Союзники, Крипи)
-        if (FeedOthers.value) {
-            // @ts-ignore
-            unit.MoveTo(TargetPosition);
-        }
+        MyHero.MoveTo(TargetPos)
     }
-});
 
-console.log("Total Feed завантажено. Тепер побіжать усі!");
+    if (!FeedOthers.value) return
+
+    // 2. Фід іншими героями (лівнуті/shared)
+    EntityManager.GetEntitiesByClass("CDOTA_BaseNPC_Hero").forEach(hero => {
+        // @ts-ignore
+        if (hero !== MyHero && hero.IsAlive && hero.IsControllable) {
+            // @ts-ignore
+            hero.MoveTo(TargetPos)
+        }
+    })
+
+    // 3. Фід кур'єрами
+    EntityManager.GetEntitiesByClass("CDOTA_Unit_Courier").forEach(courier => {
+        // @ts-ignore
+        if (courier.IsAlive && courier.IsControllable) {
+            // @ts-ignore
+            courier.Move
