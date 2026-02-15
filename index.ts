@@ -1,16 +1,24 @@
-import { EventsSDK, Menu } from "github.com/octarine-public/wrapper/index"
+import { EventsSDK, GameEntitySystem, Menu } from "github.com/octarine-public/wrapper/index"
 
-// Створюємо головну вкладку в меню
+// 1. Створюємо головну вкладку в меню "Денис"
 const MyTab = Menu.AddEntry("Денис");
 
-// Додаємо повзунок камери (мін: 1200, макс: 2500, стандарт: 1600)
+// 2. Додаємо елементи керування (як на скриншоті)
 const CameraSlider = MyTab.AddSlider("Дистанція камери", 1200, 2500, 1600);
+const AutoArmletToggle = MyTab.AddToggle("Авто-Армлет", true);
+const HpSlider = MyTab.AddSlider("Мінімальне ХП для абузу", 200, 600, 400);
 
-// Додаємо перемикач
-const AutoAcceptToggle = MyTab.AddToggle("Авто-прийняття", true);
+const SETTINGS = {
+    armletName: "item_armlet",
+    unholyModifier: "modifier_item_armlet_unholy_strength",
+    iceBlastModifier: "modifier_ice_blast"
+};
 
-// Функція, яка працює в реальному часі
+console.log("Скрипт Дениса (Армлет + Меню) завантажено!");
+
+// Основний цикл скрипта
 EventsSDK.on("Update", () => {
+    // --- Логіка Камери ---
     if (CameraSlider) {
         // @ts-ignore
         if (typeof Camera !== 'undefined') {
@@ -18,6 +26,28 @@ EventsSDK.on("Update", () => {
             Camera.Distance = CameraSlider.Value;
         }
     }
-});
 
-console.log("Скрипт Дениса успішно завантажено!");
+    // --- Логіка Авто-Армлета ---
+    const me = GameEntitySystem.getLocalPlayer();
+    
+    // Перевірки: чи ввімкнено в меню, чи живий герой
+    if (!AutoArmletToggle.Value || !me || !me.isAlive() || me.isStunned()) return;
+
+    const armlet = me.getItemByName(SETTINGS.armletName);
+    if (!armlet || !armlet.isReady()) return;
+
+    const currentHp = me.getHealth();
+    const hasIceBlast = me.hasModifier(SETTINGS.iceBlastModifier);
+    const isUnholyActive = me.hasModifier(SETTINGS.unholyModifier);
+
+    // Логіка абузу: якщо ХП менше ніж на повзунку в меню і немає ульти Апарата
+    if (!hasIceBlast && currentHp <= HpSlider.Value) {
+        if (isUnholyActive) {
+            armlet.cast(); // Вимкнути
+            armlet.cast(); // Увімкнути
+            console.log(`[Armlet] Абуз виконано на ${currentHp} HP`);
+        } else {
+            armlet.cast(); // Просто увімкнути, якщо був вимкнений
+        }
+    }
+});
