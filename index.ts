@@ -2,67 +2,45 @@ import {
     EventsSDK,
     LocalPlayer,
     Menu,
-    Vector3,
-    EntityManager
+    Vector3
 } from "github.com/octarine-public/wrapper/index"
 
-// Новое ID меню, чтобы ничего не прыгало
-const DenisV4 = Menu.AddEntry("Denis_Final_v4");
-const FeedActive = DenisV4.AddToggle("FEED_ON", false);
-const TargetDire = DenisV4.AddToggle("Target_is_Dire", false);
-const FeedTeammates = DenisV4.AddToggle("Feed_Teammates", true);
+// --- МЕНЮ З ІКОНКОЮ ---
+const FeedMenu = Menu.AddEntry("Auto Feed Ultra", "panorama/images/items/travel_boots_png.vtex_c");
+const EnableFeed = FeedMenu.AddToggle("УВІМКНУТИ ФІД", false);
+const MySide = FeedMenu.AddToggle("Я за ТЬМУ (Dire)", false); 
 
-const ArmletActive = DenisV4.AddToggle("Armlet_Abuse", false);
-const ArmletHPValue = DenisV4.AddList("Armlet_HP", ["150", "200", "250", "300", "350"], 2);
+// Базові координати фонтанів
+const RadiantFountain = { x: -7200, y: -6600, z: 384 };
+const DireFountain = { x: 7200, y: 6500, z: 384 };
 
-let nextTick = 0;
+let lastActionTime = 0;
+let nextRandomDelay = 5000; // Початкова затримка
 
 EventsSDK.on("PostDataUpdate", () => {
-    const Me = LocalPlayer?.Hero;
-    if (!Me || !Me.IsAlive) return;
+    if (!EnableFeed.value) return;
 
-    const now = Date.now();
-    if (now < nextTick) return; 
-    nextTick = now + 200; // Ограничиваем до 5 проверок в секунду для Xeon [cite: 2025-10-12]
+    const currentTime = Date.now();
+    if (currentTime - lastActionTime < nextRandomDelay) return;
+    
+    // Оновлюємо час останньої дії
+    lastActionTime = currentTime;
+    
+    // ГЕНЕРУЄМО ВИПАДКОВУ ЗАРИМКУ (від 4000 до 8000 мс)
+    nextRandomDelay = Math.floor(Math.random() * (8000 - 4000) + 4000);
 
-    // --- 1. АРМЛЕТ (Список вместо слайдера, чтобы не прыгал)
-    if (ArmletActive.value) {
-        const hpLimit = [150, 200, 250, 300, 350][ArmletHPValue.value];
-        // @ts-ignore
-        const armlet = Me.GetItem("item_armlet");
-        // @ts-ignore
-        if (armlet && Me.Health < hpLimit && Me.HasModifier("modifier_item_armlet_unholy_strength")) {
-            // @ts-ignore
-            armlet.Cast(); armlet.Cast();
-        }
-    }
+    const MyHero = LocalPlayer?.Hero;
+    if (!MyHero || !MyHero.IsAlive) return;
 
-    // --- 2. ФИДЕР (Используем консоль для обхода Humanizer)
-    if (FeedActive.value) {
-        // Каждые 4 секунды принудительно шлем команду
-        if (!globalThis.lastMove) globalThis.lastMove = 0;
-        if (now - globalThis.lastMove > 4000) {
-            globalThis.lastMove = now;
+    // ВИБИРАЄМО ВИПАДКОВУ ТОЧКУ В РАДІУСІ 300 ОДИННИЦЬ ВІД ФОНТАНУ
+    const basePos = MySide.value ? RadiantFountain : DireFountain;
+    const randomX = basePos.x + (Math.random() * 600 - 300);
+    const randomY = basePos.y + (Math.random() * 600 - 300);
+    const TargetPos = new Vector3(randomX, randomY, basePos.z);
 
-            const x = TargetDire.value ? 7200 : -7200;
-            const y = TargetDire.value ? 6500 : -6600;
-
-            // Прямая команда в обход защиты Octarine
-            // @ts-ignore
-            EventsSDK.ExecuteCommand(`dota_unit_moveto ${x} ${y}`);
-
-            if (FeedTeammates.value) {
-                const units = EntityManager.GetEntitiesByClass("CDOTA_BaseNPC_Hero");
-                for (const u of units) {
-                    // @ts-ignore
-                    if (u && u !== Me && u.IsAlive && u.IsControllable) {
-                        // @ts-ignore
-                        u.MoveTo(new Vector3(x, y, 384));
-                    }
-                }
-            }
-        }
-    }
+    // Робимо клік
+    // @ts-ignore
+    MyHero.MoveTo(TargetPos);
 });
 
-console.log("Denis_Final_v4 Loaded. Фид только при FEED_ON!");
+console.log("Realistic Feed завантажено. Координати та час тепер завжди різні!");
