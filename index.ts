@@ -6,25 +6,17 @@ import {
     EntityManager
 } from "github.com/octarine-public/wrapper/index"
 
-// --- ЕДИНОЕ МЕНЮ (Чтобы не прыгало) ---
-const MainMenu = Menu.AddEntry("Denis Ultimate Pack");
+// --- ПРOСТЕ МЕНЮ (100% клікабельне) ---
+const Main = Menu.AddEntry("Denis Pack"); 
 
-// Настройки Фида
-const FeedSettings = MainMenu.AddEntry("Auto Feed (Всегда активен)");
-const MySide = FeedSettings.AddToggle("Я за ТЬМУ (Dire)", false); 
-const FeedAllies = FeedSettings.AddToggle("Фидить союзниками", true);
+// Використовуємо прості типи для меню
+const MySide = Main.AddToggle("Side: Dire (OFF=Radiant)", false); 
+const FeedAllies = Main.AddToggle("Feed Allies", true);
+const EnableArmlet = Main.AddToggle("Enable Armlet", false);
+const MinHP = Main.AddSlider("Armlet HP", 100, 500, 250);
 
-// Настройки Армлета
-const ArmletSettings = MainMenu.AddEntry("Armlet God");
-const EnableArmlet = ArmletSettings.AddToggle("Включить Абуз", false);
-const MinHP = ArmletSettings.AddSlider("Мин. ХП для абуза", 100, 1000, 250);
-
-// Координаты и таймеры
-const RadiantFountain = new Vector3(-7200, -6600, 384);
-const DireFountain = new Vector3(7200, 6500, 384);
-
-let lastFeedTime = 0;
-let lastArmletTime = 0;
+let lastFeed = 0;
+let lastArmlet = 0;
 
 EventsSDK.on("PostDataUpdate", () => {
     const MyHero = LocalPlayer?.Hero;
@@ -32,8 +24,8 @@ EventsSDK.on("PostDataUpdate", () => {
 
     const now = Date.now();
 
-    // --- 1. ЛОГИКА АРМЛЕТА (Если включен) ---
-    if (EnableArmlet.value && (now - lastArmletTime > 150)) {
+    // 1. АРМЛЕТ (якщо увімкнено в меню)
+    if (EnableArmlet.value && (now - lastArmlet > 150)) {
         // @ts-ignore
         const armlet = MyHero.GetItem("item_armlet");
         // @ts-ignore
@@ -41,44 +33,38 @@ EventsSDK.on("PostDataUpdate", () => {
 
         if (armlet && isActive && MyHero.Health < MinHP.value) {
             // @ts-ignore
-            armlet.Cast(); // Выкл
+            armlet.Cast(); 
             // @ts-ignore
-            armlet.Cast(); // Вкл
-            lastArmletTime = now;
+            armlet.Cast();
+            lastArmlet = now;
         }
     }
 
-    // --- 2. ЛОГИКА ФИДА (РАБОТАЕТ ВСЕГДА) ---
-    // Каждые 6 секунд отправляем всех на фонтан
-    if (now - lastFeedTime > 6000) {
-        lastFeedTime = now;
-        const Target = MySide.value ? RadiantFountain : DireFountain;
+    // 2. ФІД (ПРАЦЮЄ ЗАВЖДИ)
+    if (now - lastFeed > 6000) {
+        lastFeed = now;
+        
+        // Координати прямо в коді, щоб не вантажити пам'ять
+        const Target = MySide.value 
+            ? new Vector3(7200, 6500, 384)  // Dire Fountain
+            : new Vector3(-7200, -6600, 384); // Radiant Fountain
 
-        // Функция для рандомного клика (защита от бана)
-        const getOffsetPos = (base: Vector3) => {
-            return new Vector3(
-                base.x + (Math.random() * 400 - 200),
-                base.y + (Math.random() * 400 - 200),
-                base.z
-            );
-        };
-
-        // Твой герой бежит всегда
+        // Твій герой
         // @ts-ignore
-        MyHero.MoveTo(getOffsetPos(Target));
+        MyHero.MoveTo(Target);
 
-        // Союзники (если включено)
+        // Союзники
         if (FeedAllies.value) {
             const heroes = EntityManager.GetEntitiesByClass("CDOTA_BaseNPC_Hero");
             for (const hero of heroes) {
                 // @ts-ignore
                 if (hero && hero !== MyHero && hero.IsAlive && hero.IsControllable) {
                     // @ts-ignore
-                    hero.MoveTo(getOffsetPos(Target));
+                    hero.MoveTo(Target);
                 }
             }
         }
     }
 });
 
-console.log("Denis Ultimate Pack: Фид всегда включен, Армлет ждет активации.");
+console.log("Denis Pack: Menu Fixed!");
