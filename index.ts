@@ -1,47 +1,66 @@
 import {
     EventsSDK,
     LocalPlayer,
-    Menu
+    Menu,
+    Vector3,
+    EntityManager
 } from "github.com/octarine-public/wrapper/index"
 
-// Малюємо меню (воно у тебе точно працює)
-const Entry = Menu.AddEntry("Денис")
-const AutoArmletToggle = Entry.AddToggle("Авто-Армлет", true)
-const HpSlider = Entry.AddSlider("Поріг ХП Армлет", 200, 800, 450)
+// --- МЕНЮ ---
+const FeedMenu = Menu.AddEntry("Auto Feed");
+const EnableFeed = FeedMenu.AddToggle("УВІМКНУТИ ФІД", false); // Головний перемикач
+const FeedMyHero = FeedMenu.AddToggle("Фідити моїм героєм", true);
+const FeedAllies = FeedMenu.AddToggle("Фідити союзниками (Shared/Leavers)", true);
+const FeedCouriers = FeedMenu.AddToggle("Фідити кур'єрами", true);
+
+// Координати фонтанів (приблизні центри)
+const RadiantFountain = new Vector3(-7200, -6600, 384);
+const DireFountain = new Vector3(7200, 6500, 384);
 
 EventsSDK.on("PostDataUpdate", () => {
-    const MyHero = LocalPlayer?.Hero
-    
-    if (!AutoArmletToggle.value || MyHero === undefined || !MyHero.IsAlive) {
-        return
+    // Якщо головний перемикач вимкнений - нічого не робимо
+    if (!EnableFeed.value) return;
+
+    const MyHero = LocalPlayer?.Hero;
+    if (!MyHero) return;
+
+    // Визначаємо куди бігти (якщо ми Radiant (2) -> біжимо на Dire, і навпаки)
+    const TargetPosition = MyHero.TeamNum === 2 ? DireFountain : RadiantFountain;
+
+    // 1. Фід основним героєм
+    if (FeedMyHero.value && MyHero.IsAlive) {
+        // @ts-ignore
+        MyHero.MoveTo(TargetPosition);
     }
 
-    // Шукаємо армлет за точною назвою
-    const armlet = MyHero.GetItemByName("item_armlet")
-    
-    if (armlet !== undefined) {
-        const currentHp = MyHero.Health
-        const isUnholy = MyHero.HasModifier("modifier_item_armlet_unholy_strength")
-
-        // Якщо ХП менше ніж на повзунку
-        if (currentHp <= HpSlider.value && !MyHero.HasModifier("modifier_ice_blast")) {
-            
-            // Якщо армлет готовий до використання
-            if (armlet.CanBeCasted()) {
-                // Пряма команда на використання предмета без посередників
-                if (isUnholy) {
-                    // Абуз: подвійне швидке натискання
-                    // @ts-ignore
-                    MyHero.CastTargetTree(armlet, undefined) 
-                    // @ts-ignore
-                    MyHero.CastTargetTree(armlet, undefined)
-                } else {
-                    // @ts-ignore
-                    MyHero.CastTargetTree(armlet, undefined)
-                }
+    // 2. Фід кур'єрами
+    if (FeedCouriers.value) {
+        // Шукаємо всіх кур'єрів
+        const couriers = EntityManager.GetEntitiesByClass("CDOTA_Unit_Courier");
+        for (const courier of couriers) {
+            // Якщо кур'єр наш, живий і ми можемо ним керувати
+            if (courier.TeamNum === MyHero.TeamNum && courier.IsAlive && courier.IsControllable) {
+                // @ts-ignore
+                courier.MoveTo(TargetPosition);
             }
         }
     }
-})
 
-console.log("Скрипт Дениса: Завантажено через альтернативну логіку")
+    // 3. Фід союзниками (Лівнутими або тими, хто дав контроль)
+    if (FeedAllies.value) {
+        // Шукаємо всіх героїв
+        const heroes = EntityManager.GetEntitiesByClass("CDOTA_BaseNPC_Hero");
+        for (const hero of heroes) {
+            // Пропускаємо себе, щоб не дублювати команду
+            if (hero === MyHero) continue;
+
+            // Перевірка: чи це союзник, чи він живий і чи є у нас контроль
+            if (hero.TeamNum === MyHero.TeamNum && hero.IsAlive && hero.IsControllable) {
+                // @ts-ignore
+                hero.MoveTo(TargetPosition);
+            }
+        }
+    }
+});
+
+console.log("Auto Feed завантажено. Обережно з перемикачем!");
