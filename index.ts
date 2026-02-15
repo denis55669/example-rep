@@ -5,20 +5,12 @@ import {
     Vector3
 } from "github.com/octarine-public/wrapper/index"
 
-// --- МЕНЮ (Denis V7) ---
-const Main = Menu.AddEntry("Denis_V7_Elite");
+// --- МЕНЮ (Denis V8) ---
+const Main = Menu.AddEntry("Denis_V8_Fixed");
 const FeedOn = Main.AddToggle("1. ФИД ВКЛ", false);
 const SideDire = Main.AddToggle("2. За Dire (ТЬМА)", false); 
-const ArmletOn = Main.AddToggle("3. УМНЫЙ АРМЛЕТ", false);
-const ArmletHP = Main.AddSlider("4. Порог ХП", 150, 450, 260);
-
-// База данных опасностей из твоего файла
-const DANGER_MODS = [
-    "modifier_venomancer_poison_nova", "modifier_queenofpain_shadow_strike",
-    "modifier_item_spirit_vessel", "modifier_viper_poison_attack",
-    "modifier_pudge_rot", "modifier_huskar_burning_spear",
-    "modifier_item_radiance", "modifier_maledict"
-];
+const ArmletOn = Main.AddToggle("3. АБУЗ АРМЛЕТА", false);
+const ArmletHP = Main.AddSlider("4. Порог ХП", 100, 500, 280);
 
 let lastFeed = 0;
 let lastArmlet = 0;
@@ -29,38 +21,23 @@ EventsSDK.on("PostDataUpdate", () => {
     if (!Me || !Me.IsAlive) return;
     const now = Date.now();
 
-    // --- ЛОГИКА АРМЛЕТА (Адаптация из Umbrella Lua) ---
-    if (ArmletOn.value && (now - lastArmlet > 130)) {
+    // --- ЛОГИКА АРМЛЕТА (Исправленная под Octarine) ---
+    if (ArmletOn.value && (now - lastArmlet > 150)) {
         // @ts-ignore
         const armlet = Me.GetItem("item_armlet");
-        // @ts-ignore
-        const isActive = Me.HasModifier("modifier_item_armlet_unholy_strength");
-        
-        // Проверка на "грязные" дебаффы, которые мешают абузить
-        let hasDanger = false;
-        for (const mod of DANGER_MODS) {
-            // @ts-ignore
-            if (Me.HasModifier(mod)) {
-                hasDanger = true;
-                break;
-            }
-        }
-
         if (armlet) {
-            // Если ХП мало - абузим
-            if (isActive && Me.Health < ArmletHP.value) {
-                // Если на нас висит сильный яд, абузить опасно, но мы пробуем максимально быстро
+            // Проверяем, включен ли армлет сейчас (модификатор из твоего Lua)
+            // @ts-ignore
+            const isToggledOn = Me.HasModifier("modifier_item_armlet_unholy_strength");
+
+            // Если ХП меньше порога и армлет включен — переключаем!
+            if (Me.Health < ArmletHP.value && isToggledOn) {
                 // @ts-ignore
-                armlet.Cast(); 
+                armlet.Cast(); // Выключить
                 // @ts-ignore
-                armlet.Cast();
+                setTimeout(() => { armlet.Cast(); }, 50); // Включить через 50мс
                 lastArmlet = now;
-            } 
-            // Если мы в безопасности и ХП полное - выключаем для регена (как в Safe профиле)
-            else if (isActive && Me.Health > (Me.MaxHealth * 0.9) && !hasDanger && !FeedOn.value) {
-                // @ts-ignore
-                armlet.Cast();
-                lastArmlet = now;
+                console.log("Armlet Abused!");
             }
         }
     }
@@ -79,4 +56,4 @@ EventsSDK.on("PostDataUpdate", () => {
     }
 });
 
-console.log("Denis V7: Umbrella Logic Integrated!");
+console.log("Denis V8: Armlet Fixed & Ready!");
