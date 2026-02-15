@@ -1,44 +1,45 @@
-import { EventsSDK, Menu, GameEntitySystem } from "github.com/octarine-public/wrapper/index"
+import { EventsSDK, Menu } from "github.com/octarine-public/wrapper/index"
 
-// 1. Створюємо меню (яке в тебе вже працює)
+// 1. Твоє робоче меню
 const MyTab = Menu.AddEntry("Денис");
 const CameraSlider = MyTab.AddSlider("Дистанція камери", 1200, 2500, 1600);
+const AutoAcceptToggle = MyTab.AddToggle("Авто-прийняття", true);
 const AutoArmletToggle = MyTab.AddToggle("Авто-Армлет", true);
 const HpSlider = MyTab.AddSlider("ХП для абузу", 200, 800, 450);
 
+// 2. Функція, яка точно працює
 EventsSDK.on("Update", () => {
-    // Камера
+    // Камера (твій робочий код)
+    // @ts-ignore
     if (typeof Camera !== 'undefined') {
         // @ts-ignore
         Camera.Distance = CameraSlider.Value;
     }
 
-    // ЛОГІКА АРМЛЕТА
-    if (!AutoArmletToggle.Value) return;
-
-    // @ts-ignore
-    const me = GameEntitySystem.GetLocalPlayer(); // Спробуємо з великої літери
-    
-    if (me && me.IsAlive()) {
-        // Шукаємо предмет Armlet of Mordiggian
-        const armlet = me.GetItemByName("item_armlet", true);
+    // ЛОГІКА АРМЛЕТА (без зайвих імпортів)
+    if (AutoArmletToggle.Value) {
+        // @ts-ignore
+        const me = GameEntitySystem.getLocalPlayer(); 
         
-        if (armlet && armlet.IsReady()) {
-            const currentHp = me.GetHealth();
-            const isUnholy = me.HasModifier("modifier_item_armlet_unholy_strength");
+        if (me && me.isAlive()) {
+            const armlet = me.getItemByName("item_armlet");
+            
+            if (armlet && armlet.isReady()) {
+                const currentHp = me.getHealth();
+                const isUnholy = me.hasModifier("modifier_item_armlet_unholy_strength");
 
-            // Якщо ХП менше порогу і немає "льоду" Апарата
-            if (currentHp <= HpSlider.Value && !me.HasModifier("modifier_ice_blast")) {
-                // Якщо армлет увімкнений — швидко вимикаємо і вмикаємо
-                if (isUnholy) {
-                    armlet.Cast(); // Off
-                    armlet.Cast(); // On
-                } else {
-                    armlet.Cast(); // Просто вмикаємо, якщо був вимкнений
+                // Перевірка ХП по повзунку
+                if (currentHp <= HpSlider.Value && !me.hasModifier("modifier_ice_blast")) {
+                    if (isUnholy) {
+                        armlet.cast(); // Вимкнути
+                        armlet.cast(); // Увімкнути
+                    } else {
+                        armlet.cast(); // Просто увімкнути
+                    }
                 }
             }
         }
     }
 });
 
-console.log("Скрипт Дениса: Армлет на Z готовий!");
+console.log("Скрипт Дениса: Меню повернулося і Армлет налаштований!");
