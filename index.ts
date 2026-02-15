@@ -5,32 +5,42 @@ import {
     Vector3
 } from "github.com/octarine-public/wrapper/index"
 
-// --- МЕНЮ С ИКОНКОЙ ---
-// Второй аргумент — это путь к иконке (обычные сапоги)
-const FeedMenu = Menu.AddEntry("Auto Feed Ultra", "panorama/images/items/boots_png.vtex_c");
+// --- МЕНЮ З ІКОНКОЮ ---
+const FeedMenu = Menu.AddEntry("Auto Feed Ultra", "panorama/images/items/travel_boots_png.vtex_c");
 const EnableFeed = FeedMenu.AddToggle("УВІМКНУТИ ФІД", false);
 const MySide = FeedMenu.AddToggle("Я за ТЬМУ (Dire)", false); 
 
-const RadiantFountain = new Vector3(-7200, -6600, 384);
-const DireFountain = new Vector3(7200, 6500, 384);
+// Базові координати фонтанів
+const RadiantFountain = { x: -7200, y: -6600, z: 384 };
+const DireFountain = { x: 7200, y: 6500, z: 384 };
 
 let lastActionTime = 0;
-const DELAY = 5000; // Фиксированная задержка 5 секунд
+let nextRandomDelay = 5000; // Початкова затримка
 
 EventsSDK.on("PostDataUpdate", () => {
     if (!EnableFeed.value) return;
 
     const currentTime = Date.now();
-    if (currentTime - lastActionTime < DELAY) return;
+    if (currentTime - lastActionTime < nextRandomDelay) return;
+    
+    // Оновлюємо час останньої дії
     lastActionTime = currentTime;
+    
+    // ГЕНЕРУЄМО ВИПАДКОВУ ЗАРИМКУ (від 4000 до 8000 мс)
+    nextRandomDelay = Math.floor(Math.random() * (8000 - 4000) + 4000);
 
     const MyHero = LocalPlayer?.Hero;
     if (!MyHero || !MyHero.IsAlive) return;
 
-    const TargetPosition = MySide.value ? RadiantFountain : DireFountain;
+    // ВИБИРАЄМО ВИПАДКОВУ ТОЧКУ В РАДІУСІ 300 ОДИННИЦЬ ВІД ФОНТАНУ
+    const basePos = MySide.value ? RadiantFountain : DireFountain;
+    const randomX = basePos.x + (Math.random() * 600 - 300);
+    const randomY = basePos.y + (Math.random() * 600 - 300);
+    const TargetPos = new Vector3(randomX, randomY, basePos.z);
 
+    // Робимо клік
     // @ts-ignore
-    MyHero.MoveTo(TargetPosition);
+    MyHero.MoveTo(TargetPos);
 });
 
-console.log("Auto Feed Ultra: Чистый скрипт с иконкой загружен!");
+console.log("Realistic Feed завантажено. Координати та час тепер завжди різні!");
