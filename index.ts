@@ -14,13 +14,13 @@ const Sleeper = new TickSleeper();
 
 // --- МЕНЮ ---
 const UtilityEntry = Menu.AddEntry("Utility");
-const BotNode = UtilityEntry.AddNode("Smart Bot V106", "panorama/images/items/tome_of_knowledge_png.vtex_c");
+const BotNode = UtilityEntry.AddNode("Smart Bot V107", "panorama/images/items/tome_of_knowledge_png.vtex_c");
 
 const EnableBot = BotNode.AddToggle("Enable Movement", true);
 const AutoSkill = BotNode.AddToggle("Auto Level Skills (Sven 2nd)", true);
 const AutoItems = BotNode.AddToggle("Auto Buy Items", true);
 
-// --- ГЛУБОКИЕ КООРДИНАТЫ ---
+// --- КООРДИНАТЫ ---
 const RAD_SPOTS = {
     BOT_XP: new Vector3(6600, -6600, 256),  
     BOT_LANE: new Vector3(6200, -5800, 256), 
@@ -44,18 +44,25 @@ const DIRE_SPOTS = {
 let lastMoveTick = 0;
 
 EventsSDK.on("PostDataUpdate", () => {
-    // 0. АВТО-ВЫХОД (DISCONNECT) - ЭТО НОВОЕ
-    // Как только игра закончилась (PostGame) - выходим в меню
+    // 0. АВТО-ВЫХОД (DISCONNECT)
     if (GameState.IsPostGame) {
         if (!Sleeper.Sleeping("disconnect")) {
             EventsSDK.ExecuteCommand("disconnect");
-            Sleeper.Sleep(5000, "disconnect"); // Ждем 5 сек, чтобы не спамить
+            Sleeper.Sleep(5000, "disconnect");
         }
         return;
     }
 
     const Me = LocalPlayer?.Hero;
     if (!Me || !Me.IsAlive) return;
+
+    // ==========================================
+    // НОВОЕ: ЦЕНТРИРОВАНИЕ КАМЕРЫ
+    // ==========================================
+    if (EnableBot.value) {
+        // Эта команда центрирует камеру на герое
+        EventsSDK.ExecuteCommand("dota_camera_center");
+    }
 
     // 1. ВЫКЛЮЧЕНИЕ НА 6 УРОВНЕ
     if (Me.Level >= 6) {
@@ -65,7 +72,7 @@ EventsSDK.on("PostDataUpdate", () => {
         return; 
     }
 
-    // 2. ВКЛЮЧЕНИЕ С САМОГО НАЧАЛА (< 6)
+    // 2. ВКЛЮЧЕНИЕ С НАЧАЛА (< 6)
     if (Me.Level < 6 && !EnableBot.value) {
         EnableBot.value = true;
     }
@@ -73,7 +80,7 @@ EventsSDK.on("PostDataUpdate", () => {
     if (!EnableBot.value) return;
     const now = Date.now();
 
-    // 3. ПРОКАЧКА (ТВОЙ КОД)
+    // 3. ПРОКАЧКА
     if (AutoSkill.value && Me.AbilityPoints > 0 && !Sleeper.Sleeping("skill_up")) {
         const cleave = Me.GetAbilityByName("sven_great_cleave");
         const hammer = Me.GetAbilityByName("sven_storm_bolt");
@@ -85,7 +92,7 @@ EventsSDK.on("PostDataUpdate", () => {
         }
     }
 
-    // 4. ЗАКУП (ТВОЙ КОД)
+    // 4. ЗАКУП
     if (AutoItems.value && !Sleeper.Sleeping("buy_logic")) {
         const items = ["item_power_treads", "item_bfury", "item_mask_of_madness"];
         for (const itemName of items) {
@@ -98,7 +105,7 @@ EventsSDK.on("PostDataUpdate", () => {
         }
     }
 
-    // 5. ДВИЖЕНИЕ (ТВОЙ КОД)
+    // 5. ДВИЖЕНИЕ
     if (now - lastMoveTick >= 3000) {
         lastMoveTick = now;
         const isRadiant = LocalPlayer.Team === 2;
