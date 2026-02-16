@@ -7,8 +7,7 @@ import {
     ExecuteOrder,
     TickSleeper,
     GameState,
-    EntityManager,
-    GameRules
+    EntityManager
 } from "github.com/octarine-public/wrapper/index"
 
 const Sleeper = new TickSleeper();
@@ -21,7 +20,7 @@ const EnableBot = BotNode.AddToggle("Enable Movement", false);
 const AutoSkill = BotNode.AddToggle("Auto Level Skills (Sven 2nd)", true);
 const AutoItems = BotNode.AddToggle("Auto Buy Items", true);
 
-// --- КООРДИНАТИ ДЛЯ ПУШУ ТА КУЩІВ ---
+// --- ГЛИБОКІ КООРДИНАТИ ---
 const RAD_SPOTS = {
     BOT_XP: new Vector3(6600, -6600, 256),  
     BOT_LANE: new Vector3(6200, -5800, 256), 
@@ -44,7 +43,20 @@ let lastMoveTick = 0;
 
 EventsSDK.on("PostDataUpdate", () => {
     const Me = LocalPlayer?.Hero;
-    if (!Me || !Me.IsAlive || !EnableBot.value) return;
+    if (!Me || !Me.IsAlive) return;
+
+    // ==========================================
+    // ГОЛОВНИЙ ВИМИКАЧ (KILL-SWITCH)
+    // ==========================================
+    if (Me.Level >= 10) {
+        if (EnableBot.value) {
+            EnableBot.value = false; // Вимикаємо галку в меню
+            console.log("Level 10 reached. Bot disabled.");
+        }
+        return; // Повністю зупиняємо логіку
+    }
+
+    if (!EnableBot.value) return;
     const now = Date.now();
 
     // 1. ПРОКАЧКА СВЕНА (2-Й СКІЛ)
@@ -71,54 +83,38 @@ EventsSDK.on("PostDataUpdate", () => {
         }
     }
 
-    // 3. ЛОГІКА РУХУ ТА ПУШУ
+    // 3. ЛОГІКА РУХУ (ЦИКЛ 1/1 РІВЕНЬ)
     if (now - lastMoveTick >= 3000) {
         lastMoveTick = now;
         const isRadiant = LocalPlayer.Team === 2;
         const spots = isRadiant ? RAD_SPOTS : DIRE_SPOTS;
         
-        // ПЕРЕВІРКА ЧАСУ (10 ХВИЛИН = 600 СЕКУНД)
-        const gameTime = GameRules ? GameRules.GameTime : 0;
-        const isLateGame = gameTime > 600;
-
         let target: Vector3;
-        let forceAttack = false;
+        const isHideLevel = (Me.Level % 2 !== 0); // 1, 3, 5, 7, 9 - Ховаємось
 
-        if (isLateGame) {
-            // ПІСЛЯ 10 ХВИЛИНИ: Цикл ліній кожні 2 рівні
-            // 10-11: Низ, 12-13: Мід, 14-15: Верх
-            const laneCycle = Math.floor((Me.Level - 10) / 2) % 3;
-            if (laneCycle === 0) target = spots.BOT_LANE.Clone();
-            else if (laneCycle === 1) target = spots.MID_LANE.Clone();
-            else target = spots.TOP_LANE.Clone();
-            
-            forceAttack = true; // Завжди б'ємо на лініях
+        if (Me.Level < 2) {
+            target = isHideLevel ? spots.BOT_XP.Clone() : spots.BOT_LANE.Clone();
+        } else if (Me.Level < 6) {
+            target = isHideLevel ? spots.MID_XP.Clone() : spots.MID_LANE.Clone();
         } else {
-            // ДО 10 ХВИЛИНИ: Твоя схема 1/1 рівень
-            const isHideLevel = (Me.Level % 2 !== 0);
-            if (Me.Level < 2) {
-                target = isHideLevel ? spots.BOT_XP.Clone() : spots.BOT_LANE.Clone();
-            } else if (Me.Level < 6) {
-                target = isHideLevel ? spots.MID_XP.Clone() : spots.MID_LANE.Clone();
-            } else {
-                target = isHideLevel ? spots.TOP_XP.Clone() : spots.TOP_LANE.Clone();
-            }
-            forceAttack = !isHideLevel;
+            target = isHideLevel ? spots.TOP_XP.Clone() : spots.TOP_LANE.Clone();
         }
 
         // Рандом для безпалевності
-        target.x += (Math.random() * 300 - 150);
-        target.y += (Math.random() * 300 - 150);
+        target.x += (Math.random() * 200 - 100);
+        target.y += (Math.random() * 200 - 100);
 
         try {
-            // @ts-ignore
-            ExecuteOrder.HoldOrdersTarget = target;
-            if (forceAttack) {
-                // РЕЖИМ ПУШУ: Йдемо і б'ємо все на шляху
+            if (!isHideLevel) {
+                // РЕЖИМ АТАКИ: Виходимо і б'ємо кріпів (Attack Move)
                 // @ts-ignore
-                Me.Attack(target);
+                ExecuteOrder.HoldOrdersTarget = target;
+                // @ts-ignore
+                Me.Attack(target); 
             } else {
-                // РЕЖИМ ХОВАНКИ: Тільки Bypass у кущі
+                // РЕЖИМ ХОВАНКИ: Прямо в кущі з байпасом
+                // @ts-ignore
+                ExecuteOrder.HoldOrdersTarget = target;
                 // @ts-ignore
                 Me.MoveTo(target, false, true); 
             }
