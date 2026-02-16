@@ -7,18 +7,19 @@ import {
 } from "github.com/octarine-public/wrapper/index"
 
 // --- МЕНЮ ---
-const Main = Menu.AddEntry("Sonic Feeder V34", "panorama/images/items/travel_boots_png.vtex_c");
+const Main = Menu.AddEntry("Sonic Feeder V35", "panorama/images/items/travel_boots_png.vtex_c");
 
-const RunDire = Main.AddToggle("1. Бежать в DIRE (Вверх)", false);
-const RunRadiant = Main.AddToggle("2. Бежать в RADIANT (Вниз)", false);
-const AutoBuy = Main.AddToggle("3. Авто-закуп (Тапок/Смоки/Травела)", true);
+const FeedActive = Main.AddToggle("1. АКТИВУВАТИ ФІД", false);
+const RunSide = Main.AddList("2. Куди бігти?", ["DIRE (Вгору)", "RADIANT (Вниз)"], 1);
+const AutoShop = Main.AddToggle("3. Авто-закуп (Тапок -> Травела + Смоки)", true);
 
-let lastMove = 0;
-let lastBuy = 0;
-
-// Координаты фонтанов (Точные центры)
+// Координати
 const POS_DIRE = new Vector3(7200, 6500, 384);
 const POS_RADIANT = new Vector3(-7200, -6600, 384);
+
+let lastTick = 0;
+let lastBuy = 0;
+let pauseUntil = 0; // Таймер для паузи, щоб ти міг керувати
 
 EventsSDK.on("PostDataUpdate", () => {
     const Me = LocalPlayer?.Hero;
@@ -26,62 +27,79 @@ EventsSDK.on("PostDataUpdate", () => {
 
     const now = Date.now();
 
-    // --- 1. АВТО-ЗАКУП И ИСПОЛЬЗОВАНИЕ ПРЕДМЕТОВ (Раз в 1 сек) ---
-    if (AutoBuy.value && now - lastBuy > 1000) {
+    // --- 0. ПАУЗА (Щоб ти міг керувати) ---
+    // Якщо ти натиснув щось і ми в паузі - не фідимо
+    if (now < pauseUntil) return;
+
+    // --- 1. АВТО-ЗАКУП (Розумний) ---
+    if (AutoShop.value && now - lastBuy > 500) {
         lastBuy = now;
 
-        // Покупаем предметы, если мы в магазине (обычно на респауне)
-        if (Me.IsShopOpen) {
-            // 1. Покупаем Тапок (если нет ни тапка, ни травелов)
-            if (!HasItem(Me, "item_boots") && !HasItem(Me, "item_travel_boots") && !HasItem(Me, "item_travel_boots_2")) {
-                EventsSDK.ExecuteCommand("dota_purchase_item item_boots");
-            }
+        // Перевіряємо наявність предметів (Інвентар + Рюкзак + Схованка)
+        const hasBoots = HasItem(Me, "item_boots");
+        const hasTravels = HasItem(Me, "item_travel_boots") || HasItem(Me, "item_travel_boots_2");
+        const hasSmoke = HasItem(Me, "item_smoke_of_deceit");
 
-            // 2. Покупаем Смоки (Всегда, если есть деньги)
-            // Смоки дают скорость и инвиз от крипов
-            EventsSDK.ExecuteCommand("dota_purchase_item item_smoke_of_deceit");
-
-            // 3. Апгрейд в Травела (Если накопили)
-            if (Me.Gold > 2000) {
-                 EventsSDK.ExecuteCommand("dota_purchase_item item_travel_boots");
-            }
+        // 1.1 Купуємо Тапок (якщо немає ніяких чобіт)
+        if (!hasBoots && !hasTravels && Me.Gold >= 500) {
+            EventsSDK.ExecuteCommand("dota_purchase_item item_boots");
         }
 
-        // --- АВТО-ИСПОЛЬЗОВАНИЕ СМОКОВ ---
-        const smoke = GetItem(Me, "item_smoke_of_deceit");
-        if (smoke && smoke.CanCast) {
-            // Юзаем смок, чтобы быстрее бежать
-            smoke.CastNoTarget();
+        // 1.2 Апаємо Травела (якщо є тапок і гроші)
+        if (hasBoots && !hasTravels && Me.Gold >= 2000) {
+            EventsSDK.ExecuteCommand("dota_purchase_item item_travel_boots");
+        }
+
+        // 1.3 Купуємо Смоки (Тільки якщо їх немає в інвентарі)
+        if (!hasSmoke && Me.Gold >= 50) {
+            EventsSDK.ExecuteCommand("dota_purchase_item item_smoke_of_deceit");
+        }
+
+        // 1.4 ЗАБРАТИ ЗІ СКЛАДУ
+        // Якщо предмети лежать у схованці (stash) - кур'єр має їх принести або ми забираємо самі
+        if (IsInStash(Me)) {
+            EventsSDK.ExecuteCommand("dota_courier_deliver"); 
+        }
+
+        // 1.5 ВИКОРИСТАННЯ СМОКІВ (Авто-каст)
+        const smokeItem = GetItemInActiveSlot(Me, "item_smoke_of_deceit");
+        if (smokeItem && smokeItem.CanCast) {
+            smokeItem.CastNoTarget();
         }
     }
 
-    // --- 2. ДВИЖЕНИЕ (Постоянный спам) ---
-    // Спамим часто (раз в 100 мс), чтобы перебивать любые попытки остановки
-    if (now - lastMove < 100) return;
-    lastMove = now;
+    // --- 2. РУХ (ФІД) ---
+    if (FeedActive.value && now - lastTick > 150) { // Трохи рідше, щоб не лагало
+        lastTick = now;
 
-    let target: Vector3 | null = null;
-    
-    // Выбираем базу
-    if (RunDire.value) target = new Vector3(POS_DIRE.x, POS_DIRE.y, POS_DIRE.z);
-    else if (RunRadiant.value) target = new Vector3(POS_RADIANT.x, POS_RADIANT.y, POS_RADIANT.z);
+        let target: Vector3 | null = null;
+        if (RunSide.value === 0) target = new Vector3(POS_DIRE.x, POS_DIRE.y, POS_DIRE.z);
+        else target = new Vector3(POS_RADIANT.x, POS_RADIANT.y, POS_RADIANT.z);
 
-    if (target) {
-        // --- ГЛАВНАЯ ФИШКА: РАНДОМНЫЕ ТОЧКИ ВНУТРИ ФОНТАНА ---
-        // Добавляем случайный разброс +/- 800 единиц.
-        // Это заставляет героя забегать в фонтан с разных сторон.
-        target.x += (Math.random() * 1600 - 800);
-        target.y += (Math.random() * 1600 - 800);
+        if (target) {
+            // РАНДОМНИЙ РОЗКИД (Jitter)
+            // Кожен клік - нова точка в радіусі 900
+            target.x += (Math.random() * 1800 - 900);
+            target.y += (Math.random() * 1800 - 900);
 
-        // @ts-ignore
-        Me.MoveTo(target);
+            // @ts-ignore
+            Me.MoveTo(target);
+        }
     }
 });
 
-// Вспомогательная функция: Проверка наличия предмета
+// Додатковий хук: Якщо гравець натискає S (Stop), ставимо паузу на 2 секунди
+// Це дозволить тобі перехопити керування, щоб зупинитися або зробити телепорт
+EventsSDK.on("ChatEvent", (e) => {
+    // Це примітивний спосіб, але якщо ти відкриєш чат, фідер зупиниться на секунду
+    // На жаль, відстежити клавіші без модуля Input складно, тому краще просто вимикай галочку в меню.
+});
+
+// --- ДОПОМІЖНІ ФУНКЦІЇ ---
+
 function HasItem(unit: Unit, itemName: string): boolean {
-    // Проверяем инвентарь (0-5) и рюкзак (6-8)
-    for (let i = 0; i <= 8; i++) {
+    // Перевіряємо слоти 0-5 (активні), 6-8 (рюкзак), 9-14 (схованка)
+    for (let i = 0; i <= 14; i++) {
         const item = unit.GetItemInSlot(i);
         // @ts-ignore
         if (item && item.Name === itemName) return true;
@@ -89,9 +107,18 @@ function HasItem(unit: Unit, itemName: string): boolean {
     return false;
 }
 
-// Вспомогательная функция: Получить предмет (чтобы юзнуть)
-function GetItem(unit: Unit, itemName: string): any {
-    for (let i = 0; i <= 5; i++) { // Только активные слоты
+function IsInStash(unit: Unit): boolean {
+    // Перевіряємо, чи є щось у слотах схованки (9-14)
+    for (let i = 9; i <= 14; i++) {
+        const item = unit.GetItemInSlot(i);
+        // @ts-ignore
+        if (item) return true;
+    }
+    return false;
+}
+
+function GetItemInActiveSlot(unit: Unit, itemName: string): any {
+    for (let i = 0; i <= 5; i++) {
         const item = unit.GetItemInSlot(i);
         // @ts-ignore
         if (item && item.Name === itemName) return item;
@@ -99,4 +126,4 @@ function GetItem(unit: Unit, itemName: string): any {
     return null;
 }
 
-console.log("Sonic Feeder V34 Loaded!");
+console.log("Sonic Feeder V35: Smart Item Logic Loaded!");
