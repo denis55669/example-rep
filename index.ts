@@ -14,14 +14,13 @@ const Sleeper = new TickSleeper();
 
 // --- МЕНЮ ---
 const UtilityEntry = Menu.AddEntry("Utility");
-const BotNode = UtilityEntry.AddNode("Smart Bot V105", "panorama/images/items/tome_of_knowledge_png.vtex_c");
+const BotNode = UtilityEntry.AddNode("Smart Bot V106", "panorama/images/items/tome_of_knowledge_png.vtex_c");
 
-// Увімкнено за замовчуванням (true)
 const EnableBot = BotNode.AddToggle("Enable Movement", true);
 const AutoSkill = BotNode.AddToggle("Auto Level Skills (Sven 2nd)", true);
 const AutoItems = BotNode.AddToggle("Auto Buy Items", true);
 
-// --- ГЛИБОКІ КООРДИНАТИ ---
+// --- ГЛУБОКИЕ КООРДИНАТЫ ---
 const RAD_SPOTS = {
     BOT_XP: new Vector3(6600, -6600, 256),  
     BOT_LANE: new Vector3(6200, -5800, 256), 
@@ -45,33 +44,36 @@ const DIRE_SPOTS = {
 let lastMoveTick = 0;
 
 EventsSDK.on("PostDataUpdate", () => {
+    // 0. АВТО-ВЫХОД (DISCONNECT) - ЭТО НОВОЕ
+    // Как только игра закончилась (PostGame) - выходим в меню
+    if (GameState.IsPostGame) {
+        if (!Sleeper.Sleeping("disconnect")) {
+            EventsSDK.ExecuteCommand("disconnect");
+            Sleeper.Sleep(5000, "disconnect"); // Ждем 5 сек, чтобы не спамить
+        }
+        return;
+    }
+
     const Me = LocalPlayer?.Hero;
     if (!Me || !Me.IsAlive) return;
 
-    // ==========================================
-    // 1. ВИМИКАННЯ НА 6 РІВНІ (STOP LEVEL 6)
-    // ==========================================
+    // 1. ВЫКЛЮЧЕНИЕ НА 6 УРОВНЕ
     if (Me.Level >= 6) {
         if (EnableBot.value) {
-            EnableBot.value = false; // Вимикаємо галку
+            EnableBot.value = false; 
         }
-        return; // Більше нічого не робимо
+        return; 
     }
 
-    // ==========================================
-    // 2. ПРИМУСОВЕ ВКЛЮЧЕННЯ (FORCE ON < 6)
-    // ==========================================
-    // Якщо рівень менше 6, а бот вимкнений — вмикаємо назад
+    // 2. ВКЛЮЧЕНИЕ С САМОГО НАЧАЛА (< 6)
     if (Me.Level < 6 && !EnableBot.value) {
         EnableBot.value = true;
     }
 
-    // Якщо раптом не увімкнулось - виходимо
     if (!EnableBot.value) return;
-    
     const now = Date.now();
 
-    // 3. ПРОКАЧКА СВЕНА (Твій код)
+    // 3. ПРОКАЧКА (ТВОЙ КОД)
     if (AutoSkill.value && Me.AbilityPoints > 0 && !Sleeper.Sleeping("skill_up")) {
         const cleave = Me.GetAbilityByName("sven_great_cleave");
         const hammer = Me.GetAbilityByName("sven_storm_bolt");
@@ -83,7 +85,7 @@ EventsSDK.on("PostDataUpdate", () => {
         }
     }
 
-    // 4. ЗАКУП (Твій код)
+    // 4. ЗАКУП (ТВОЙ КОД)
     if (AutoItems.value && !Sleeper.Sleeping("buy_logic")) {
         const items = ["item_power_treads", "item_bfury", "item_mask_of_madness"];
         for (const itemName of items) {
@@ -96,14 +98,14 @@ EventsSDK.on("PostDataUpdate", () => {
         }
     }
 
-    // 5. ЛОГІКА РУХУ (Твій код)
+    // 5. ДВИЖЕНИЕ (ТВОЙ КОД)
     if (now - lastMoveTick >= 3000) {
         lastMoveTick = now;
         const isRadiant = LocalPlayer.Team === 2;
         const spots = isRadiant ? RAD_SPOTS : DIRE_SPOTS;
         
         let target: Vector3;
-        const isHideLevel = (Me.Level % 2 !== 0); // 1, 3, 5 - Ховаємось
+        const isHideLevel = (Me.Level % 2 !== 0); 
 
         if (Me.Level < 2) {
             target = isHideLevel ? spots.BOT_XP.Clone() : spots.BOT_LANE.Clone();
