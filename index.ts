@@ -16,11 +16,12 @@ const Sleeper = new TickSleeper();
 
 // --- МЕНЮ ---
 const UtilityEntry = Menu.AddEntry("Utility");
-const BotNode = UtilityEntry.AddNode("Smart Bot V96", "panorama/images/items/tome_of_knowledge_png.vtex_c");
+const BotNode = UtilityEntry.AddNode("Smart Bot V97", "panorama/images/items/tome_of_knowledge_png.vtex_c");
 
-const EnableBot = BotNode.AddToggle("Enable Movement", true);
-const AutoSkill = BotNode.AddToggle("Auto Skills (2 & 3 priority)", true);
-const AutoCast = BotNode.AddToggle("Auto Cast (3rd & Ult)", true); // Тиснути кнопки
+const EnableBot = BotNode.AddToggle("Enable Bot Logic", true);
+const AutoSkill = BotNode.AddToggle("Auto Skills (Sven/Tide)", true);
+const AutoCast = BotNode.AddToggle("Auto Cast (Spells)", true);
+const AutoAccept = BotNode.AddToggle("Auto Accept & Queue", true);
 
 // --- КООРДИНАТИ ---
 const RAD_SPOTS = {
@@ -44,95 +45,110 @@ const DIRE_SPOTS = {
 };
 
 let lastMoveTick = 0;
+let isFinished = false; // Прапор, що бот виконав завдання на цю гру
 
 EventsSDK.on("PostDataUpdate", () => {
-    // 1. АВТО-СТАРТ (0:00)
-    if (GameRules && GameRules.GameTime < 60 && !EnableBot.value) {
-        EnableBot.value = true;
+    // 1. АВТО-ПРИНЯТИЕ И ПОИСК (ПРАЦЮЄ ЗАВЖДИ, НАВІТЬ ЯКЩО БОТ ВИМКНЕНИЙ)
+    if (AutoAccept.value) {
+        if (GameState.IsMatchFound && !GameState.HasAccepted) {
+            EventsSDK.ExecuteCommand("dota_accept_match");
+        }
+        // Якщо ми не в грі і не шукаємо - шукаємо
+        if (!GameState.IsInGame && !GameState.IsSearching && !GameState.IsMatchFound) {
+             if (!Sleeper.Sleeping("queue_start")) {
+                EventsSDK.ExecuteCommand("dota_match_game_modes 1");
+                EventsSDK.ExecuteCommand("dota_match_find_match");
+                Sleeper.Sleep(5000, "queue_start");
+                // Скидаємо прапор для нової гри
+                isFinished = false; 
+                if (!EnableBot.value) EnableBot.value = true; // Вмикаємо назад для нової гри
+             }
+        }
     }
 
-    if (!EnableBot.value) return;
+    // Якщо ми не в матчі - далі код не потрібен
+    if (!GameState.IsInGame) return;
 
     const Me = LocalPlayer?.Hero;
     if (!Me || !Me.IsAlive) return;
 
     // ==========================================
-    // 2. ПРОКАЧКА СКІЛІВ (SVEN / TIDE)
+    // 2. ЛОГІКА ВИМИКАННЯ (10 РІВЕНЬ)
     // ==========================================
-    // Логіка: 2 -> 3 -> 2 -> 3 -> 2 -> 3 -> 2 -> 3 -> ULT
-    if (AutoSkill.value && Me.AbilityPoints > 0 && !Sleeper.Sleeping("skill_up")) {
-        // Визначаємо імена скілів для героїв
-        let skill2Name = ""; // Пасивка/Кракена
-        let skill3Name = ""; // Армор/Якір
-        let ultName = "";
-
-        if (Me.UnitName === "npc_dota_hero_sven") {
-            skill2Name = "sven_great_cleave";
-            skill3Name = "sven_warcry";
-            ultName = "sven_gods_strength";
-        } else if (Me.UnitName === "npc_dota_hero_tidehunter") {
-            skill2Name = "tidehunter_kraken_shell";
-            skill3Name = "tidehunter_anchor_smash";
-            ultName = "tidehunter_ravage";
-        }
-
-        let abilityToLevel: Ability | null = null;
-
-        // Якщо це Свен або Тайд, пробуємо качати по схемі
-        if (skill2Name !== "") {
-            const s2 = Me.GetAbilityByName(skill2Name);
-            const s3 = Me.GetAbilityByName(skill3Name);
-            const ult = Me.GetAbilityByName(ultName);
-
-            // Пріоритет: Ульт -> 2 скіл -> 3 скіл
-            if (ult && ult.CanLevelUp) abilityToLevel = ult;
-            else if (s2 && s2.CanLevelUp && s2.Level <= s3.Level + 1) abilityToLevel = s2; // Тримаємо баланс або максимо 2
-            else if (s3 && s3.CanLevelUp) abilityToLevel = s3;
-            else if (s2 && s2.CanLevelUp) abilityToLevel = s2;
-        }
-
-        // ЗАПОБІЖНИК: Якщо ми не знайшли, що качати (або це не Свен/Тайд), 
-        // або скіли замакшені - качаємо БУДЬ-ЩО, щоб не стояти АФК
-        if (!abilityToLevel) {
-            abilityToLevel = Me.Abilities.find(a => a.CanLevelUp && !a.IsHidden && a.Name !== "attribute_bonus");
+    if (Me.Level >= 10) {
+        if (!isFinished) {
+            console.log("Level 10 reached. Bot Sleep Mode ON.");
+            isFinished = true; // Бот закінчив роботу
         }
         
-        // Останній шанс: плюсики
-        if (!abilityToLevel) {
-            abilityToLevel = Me.Abilities.find(a => a.CanLevelUp && a.Name === "attribute_bonus");
-        }
-
-        if (abilityToLevel) {
+        // 10 СМЕРТЕЙ -> Йдемо в ліс (виняток з правила "вимкнути", щоб не фідіти)
+        // @ts-ignore
+        if (Me.Deaths >= 10 && (Date.now() - lastMoveTick >= 3000)) {
+            lastMoveTick = Date.now();
+            const isRadiant = LocalPlayer.Team === 2;
+            const jungle = isRadiant ? RAD_SPOTS.JUNGLE : DIRE_SPOTS.JUNGLE;
             // @ts-ignore
-            Me.UpgradeAbility(abilityToLevel);
-            Sleeper.Sleep(500, "skill_up"); // Коротка пауза
+            Me.MoveTo(jungle);
         }
-    }
-
-    // ==========================================
-    // 3. АВТО-КАСТ (ТИСНУТИ КНОПКИ)
-    // ==========================================
-    if (AutoCast.value && !Sleeper.Sleeping("cast_spells")) {
-        // Тиснемо 3-й скіл (Warcry / Anchor Smash) та Ульт
-        // Це ненаправлені скіли (NoTarget), тому просто CastNoTarget
-        const abilities = Me.Abilities.filter(a => !a.IsPassive && a.IsCastable && a.ManaCost <= Me.Mana);
         
-        for (const spell of abilities) {
-            // Перевіряємо, чи це 3-й скіл або Ульт (зазвичай індекси 2 і 5, або за назвою)
-            const isTargetSpell = spell.Name.includes("warcry") || spell.Name.includes("gods_strength") || 
-                                  spell.Name.includes("anchor_smash") || spell.Name.includes("ravage");
-            
-            if (isTargetSpell) {
-                // @ts-ignore
-                Me.CastNoTarget(spell);
-                Sleeper.Sleep(1000, "cast_spells"); // Не спамимо все одразу
-                break; 
-            }
+        return; // Більше нічого не робимо (скіли, закуп, лінії - стоп)
+    }
+
+    if (!EnableBot.value) return;
+
+    // ==========================================
+    // 3. АВТО-СТАРТ (0:00)
+    // ==========================================
+    // Якщо гра почалася, а прапор isFinished висить з минулої гри (баг) - скидаємо
+    if (Me.Level < 2 && isFinished) {
+        isFinished = false;
+    }
+
+    // ==========================================
+    // 4. ПРОКАЧКА І КАСТ (SVEN / TIDE)
+    // ==========================================
+    if (AutoSkill.value && Me.AbilityPoints > 0 && !Sleeper.Sleeping("skill_up")) {
+        let s2Name = "", s3Name = "", ultName = "";
+        if (Me.UnitName === "npc_dota_hero_sven") {
+            s2Name = "sven_great_cleave"; s3Name = "sven_warcry"; ultName = "sven_gods_strength";
+        } else if (Me.UnitName === "npc_dota_hero_tidehunter") {
+            s2Name = "tidehunter_kraken_shell"; s3Name = "tidehunter_anchor_smash"; ultName = "tidehunter_ravage";
+        }
+
+        let ability = null;
+        if (s2Name) {
+            const s2 = Me.GetAbilityByName(s2Name);
+            const s3 = Me.GetAbilityByName(s3Name);
+            const ult = Me.GetAbilityByName(ultName);
+            // Пріоритет: ULT > 2 > 3
+            if (ult?.CanLevelUp) ability = ult;
+            else if (s2?.CanLevelUp && (s2.Level <= s3.Level + 1 || !s3)) ability = s2;
+            else if (s3?.CanLevelUp) ability = s3;
+            else if (s2?.CanLevelUp) ability = s2;
+        }
+        
+        if (!ability) ability = Me.Abilities.find(a => a.CanLevelUp && !a.IsHidden && a.Name !== "attribute_bonus");
+        if (!ability) ability = Me.Abilities.find(a => a.CanLevelUp && a.Name === "attribute_bonus");
+
+        if (ability) {
+            // @ts-ignore
+            Me.UpgradeAbility(ability);
+            Sleeper.Sleep(500, "skill_up");
+        }
+    }
+
+    if (AutoCast.value && !Sleeper.Sleeping("cast")) {
+        const spells = Me.Abilities.filter(a => (a.Name.includes("warcry") || a.Name.includes("gods_strength") || a.Name.includes("anchor") || a.Name.includes("ravage")) && a.CanBeCasted());
+        for (const s of spells) {
+            // @ts-ignore
+            Me.CastNoTarget(s);
+            Sleeper.Sleep(1000, "cast");
+            break;
         }
     }
 
     // ==========================================
-    // 4. ЛОГІКА РУХУ
+    // 5. РУХ (ЦИКЛ ЛІНІЙ)
     // ==========================================
     const now = Date.now();
     if (now - lastMoveTick >= 3000) {
@@ -140,34 +156,14 @@ EventsSDK.on("PostDataUpdate", () => {
         const isRadiant = LocalPlayer.Team === 2;
         const spots = isRadiant ? RAD_SPOTS : DIRE_SPOTS;
         
-        let target: Vector3;
-
-        // --- УМОВА: 10 СМЕРТЕЙ -> ЙДЕМО В ЛІС ---
-        // @ts-ignore
-        if (Me.Deaths >= 10) {
-            target = spots.JUNGLE.Clone();
-            // Гуляємо по лісу
-            target.x += (Math.random() * 1500 - 750);
-            target.y += (Math.random() * 1500 - 750);
-            
-            // Якщо вороги поруч, тікаємо (опціонально, але для лісу норм просто ходити)
-            try {
-                 // @ts-ignore
-                 Me.MoveTo(target);
-            } catch(e) {}
-            return; // Далі код не йде, ми в лісі назавжди
-        }
-
-        // --- ЦИКЛ ЛІНІЙ (ДО 10 СМЕРТЕЙ) ---
-        // 1-2 рівень: Низ
-        // 3-4 рівень: Мід
-        // 5-6 рівень: Верх
+        // Цикл: 1-2(Bot), 3-4(Mid), 5-6(Top)
         const cycle = Math.floor((Me.Level + 1) / 2) % 3;
-        const isHideLevel = (Me.Level % 2 !== 0); // 1, 3, 5, 7, 9 - Ховаємось
+        const isHide = (Me.Level % 2 !== 0); // 1, 3, 5, 7, 9
 
-        if (cycle === 1) target = isHideLevel ? spots.BOT_XP.Clone() : spots.BOT_LANE.Clone();
-        else if (cycle === 2) target = isHideLevel ? spots.MID_XP.Clone() : spots.MID_LANE.Clone();
-        else target = isHideLevel ? spots.TOP_XP.Clone() : spots.TOP_LANE.Clone();
+        let target: Vector3;
+        if (cycle === 1) target = isHide ? spots.BOT_XP.Clone() : spots.BOT_LANE.Clone();
+        else if (cycle === 2) target = isHide ? spots.MID_XP.Clone() : spots.MID_LANE.Clone();
+        else target = isHide ? spots.TOP_XP.Clone() : spots.TOP_LANE.Clone();
 
         target.x += (Math.random() * 200 - 100);
         target.y += (Math.random() * 200 - 100);
@@ -175,14 +171,12 @@ EventsSDK.on("PostDataUpdate", () => {
         try {
             // @ts-ignore
             ExecuteOrder.HoldOrdersTarget = target;
-            if (!isHideLevel) {
-                // ПУШ (Парні рівні): Атака (A-click)
+            if (!isHide) {
                 // @ts-ignore
-                Me.Attack(target); 
+                Me.Attack(target);
             } else {
-                // КУЩІ (Непарні рівні): Bypass
                 // @ts-ignore
-                Me.MoveTo(target, false, true); 
+                Me.MoveTo(target, false, true);
             }
         } catch (e) {
             // @ts-ignore
@@ -191,4 +185,4 @@ EventsSDK.on("PostDataUpdate", () => {
     }
 });
 
-console.log("V96 Loaded: Sven/Tide Fix + Death Limit");
+console.log("V97: Auto-Reset & Level 10 Stop Loaded");
