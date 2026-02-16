@@ -15,14 +15,14 @@ const Sleeper = new TickSleeper();
 
 // --- МЕНЮ ---
 const UtilityEntry = Menu.AddEntry("Utility");
-const BotNode = UtilityEntry.AddNode("Smart Bot V103", "panorama/images/items/tome_of_knowledge_png.vtex_c");
+const BotNode = UtilityEntry.AddNode("Smart Bot V104", "panorama/images/items/tome_of_knowledge_png.vtex_c");
 
 const EnableBot = BotNode.AddToggle("Enable Movement", true);
 const AutoSkill = BotNode.AddToggle("Auto Skills (Spam)", true);
 const AutoCast = BotNode.AddToggle("Auto Cast (Spells)", true);
-const AutoQueue = BotNode.AddToggle("Auto Find (All Pick)", true); // Автопошук
+const AutoQueue = BotNode.AddToggle("Auto Find (All Pick)", true);
 
-// --- КООРДИНАТИ (ТВОЇ З V99) ---
+// --- КООРДИНАТИ ---
 const RAD_SPOTS = {
     BOT_XP: new Vector3(6600, -6600, 256),  
     BOT_LANE: new Vector3(6200, -5800, 256), 
@@ -47,21 +47,19 @@ let lastMoveTick = 0;
 let quickbuyDone = false;
 
 EventsSDK.on("PostDataUpdate", () => {
-    // 1. АВТО-ПОШУК ТА ПРИЙНЯТТЯ (Працює в меню)
+    // 1. АВТО-ПОШУК ТА ПРИЙНЯТТЯ
     if (AutoQueue.value) {
         if (GameState.IsMatchFound && !GameState.HasAccepted) {
             EventsSDK.ExecuteCommand("dota_accept_match");
         }
         if (GameState.IsPostGame) {
-             EventsSDK.ExecuteCommand("disconnect"); // Авто-вихід після гри
+             EventsSDK.ExecuteCommand("disconnect"); 
         }
         if (!GameState.IsInGame && !GameState.IsSearching && !GameState.IsMatchFound) {
             if (!Sleeper.Sleeping("queue")) {
-                EventsSDK.ExecuteCommand("dota_match_game_modes 1"); // All Pick
+                EventsSDK.ExecuteCommand("dota_match_game_modes 1"); 
                 EventsSDK.ExecuteCommand("dota_match_find_match");
                 Sleeper.Sleep(5000, "queue");
-                
-                // Скидання для нової гри
                 quickbuyDone = false;
                 if (!EnableBot.value) EnableBot.value = true;
             }
@@ -78,18 +76,28 @@ EventsSDK.on("PostDataUpdate", () => {
         if (!EnableBot.value) EnableBot.value = true;
     }
 
-    // 3. СТОП НА 6 РІВНІ (BAN FIX)
+    // 3. СТОП НА 6 РІВНІ (ОНОВЛЕНО)
     if (Me.Level >= 6) {
         if (EnableBot.value) {
-            EnableBot.value = false;
+            EnableBot.value = false; // Вимикаємо
             console.log("Level 6 reached. Bot Stopped.");
+        }
+        
+        // 10 Смертей = Ліс (на всяк випадок, хоча на 6 рівні він вже вимкнеться)
+        // @ts-ignore
+        if (Me.Deaths >= 10 && (Date.now() - lastMoveTick >= 3000)) {
+            lastMoveTick = Date.now();
+            const isRadiant = LocalPlayer.Team === 2;
+            const jungle = isRadiant ? RAD_SPOTS.JUNGLE : DIRE_SPOTS.JUNGLE;
+            // @ts-ignore
+            Me.MoveTo(jungle);
         }
         return; 
     }
 
     if (!EnableBot.value) return;
 
-    // 4. QUICKBUY (Один раз додає ПТ, БФ, МОМ)
+    // 4. QUICKBUY (Раз на гру)
     if (!quickbuyDone) {
         EventsSDK.ExecuteCommand("dota_shop_force_assign_quickbuy item_power_treads");
         EventsSDK.ExecuteCommand("dota_shop_item_add_to_quickbuy item_bfury");
@@ -99,8 +107,6 @@ EventsSDK.on("PostDataUpdate", () => {
 
     // 5. ПРОКАЧКА (SPAM MODE)
     if (AutoSkill.value && Me.AbilityPoints > 0 && !Sleeper.Sleeping("skill_up")) {
-        // Свен: 2 > 3 > Ульт
-        // Тайд: 3 > 2 > Ульт
         let ability = null;
         if (Me.UnitName === "npc_dota_hero_sven") {
             const s2 = Me.GetAbilityByName("sven_great_cleave");
@@ -118,7 +124,6 @@ EventsSDK.on("PostDataUpdate", () => {
             else if (s2?.CanLevelUp) ability = s2;
         }
 
-        // Якщо нічого не знайшли - будь-що
         if (!ability) ability = Me.Abilities.find(a => a.CanLevelUp && !a.IsHidden && a.Name !== "attribute_bonus");
         if (!ability) ability = Me.Abilities.find(a => a.CanLevelUp && a.Name === "attribute_bonus");
 
@@ -129,9 +134,8 @@ EventsSDK.on("PostDataUpdate", () => {
         }
     }
 
-    // 6. АВТО-КАСТ (Виправлено помилку синтаксису)
+    // 6. АВТО-КАСТ (ВИПРАВЛЕНО СИНТАКСИС)
     if (AutoCast.value && !Sleeper.Sleeping("cast_spell")) {
-        // ТУТ БУЛА ПОМИЛКА: пропущені || (OR)
         const spells = Me.Abilities.filter(a => 
             (a.Name.includes("warcry") || a.Name.includes("anchor_smash") || a.Name.includes("gods_strength") || a.Name.includes("ravage")) 
             && a.CanBeCasted() && a.ManaCost <= Me.Mana
@@ -145,7 +149,7 @@ EventsSDK.on("PostDataUpdate", () => {
         }
     }
 
-    // 7. ДВИЖЕНИЕ (ТВІЙ ОРИГІНАЛ V99)
+    // 7. ДВИЖЕНИЕ
     const now = Date.now();
     if (now - lastMoveTick >= 3000) {
         lastMoveTick = now;
@@ -154,7 +158,6 @@ EventsSDK.on("PostDataUpdate", () => {
         
         let target: Vector3;
 
-        // 10 Смертей = Ліс
         // @ts-ignore
         if (Me.Deaths >= 10) {
             target = spots.JUNGLE.Clone();
@@ -168,7 +171,7 @@ EventsSDK.on("PostDataUpdate", () => {
         }
 
         const cycle = Math.floor((Me.Level - 1) / 2) % 3;
-        const isHideLevel = (Me.Level % 2 !== 0); // 1, 3, 5 = Ховаємось
+        const isHideLevel = (Me.Level % 2 !== 0); 
 
         if (cycle === 0) { // BOT
             target = isHideLevel ? spots.BOT_XP.Clone() : spots.BOT_LANE.Clone();
