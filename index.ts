@@ -16,27 +16,27 @@ const Sleeper = new TickSleeper();
 
 // --- ЛОКАЛІЗАЦІЯ ---
 Menu.Localization.AddLocalizationUnit("english", new Map([
-    ["feed_node", "Feed (Bad Guy)"],
+    ["feed_node", "Feed (Working V53)"],
     ["run_radiant", "1. Feed RADIANT"],
     ["run_dire", "2. Feed DIRE"],
     ["fast_feed", "3. Fast Feed"],
-    ["boost_node", "Smart Bot (V59 Logic)"],
+    ["boost_node", "Smart Bot (Pathfinding Fix)"],
     ["enable_smart", "Enable Smart XP Farm"],
     ["auto_accept", "Auto Accept Match"],
-    ["auto_queue", "Auto Find (Press Button)"],
+    ["auto_queue", "Auto Find Match"],
     ["auto_items", "Auto Buy (PT -> BF -> MoM)"],
     ["auto_skill", "Auto Level Up Skills"]
 ]));
 
 Menu.Localization.AddLocalizationUnit("russian", new Map([
-    ["feed_node", "Фид (Bad Guy)"],
+    ["feed_node", "Фид (Рабочий V53)"],
     ["run_radiant", "1. Фид RADIANT"],
     ["run_dire", "2. Фид DIRE"],
     ["fast_feed", "3. Быстрый фид"],
-    ["boost_node", "Смарт Бот (Логика V59)"],
+    ["boost_node", "Смарт Бот (Фикс ходьбы)"],
     ["enable_smart", "Включить Умный Фарм"],
     ["auto_accept", "Авто-принятие игры"],
-    ["auto_queue", "Авто-Поиск (Жмет кнопку)"],
+    ["auto_queue", "Авто-Поиск"],
     ["auto_items", "Авто-закуп (ПТ -> БФ -> МОМ)"],
     ["auto_skill", "Авто-прокачка скиллов"]
 ]));
@@ -44,26 +44,26 @@ Menu.Localization.AddLocalizationUnit("russian", new Map([
 // --- МЕНЮ ---
 const UtilityEntry = Menu.AddEntry("Utility");
 
-// 1. BAD GUY (ТВОЙ ФИДЕР)
+// 1. BAD GUY (ФИДЕР - ТВОЙ РАБОЧИЙ)
 const BadGuyNode = UtilityEntry.AddNode("Bad Guy", "panorama/images/items/shadow_amulet_png.vtex_c");
 const FeedNode = BadGuyNode.AddNode("feed_node", "panorama/images/spellicons/skeleton_king_reincarnation_png.vtex_c");
 const RunToRadiant = FeedNode.AddToggle("run_radiant", false);
 const RunToDire = FeedNode.AddToggle("run_dire", false);
 const FastFeed = FeedNode.AddToggle("fast_feed", true);
 
-// 2. SMART BOOSTER (ТВОЙ БОТ + УЛУЧШЕНИЯ)
+// 2. SMART BOOSTER (БОТ - ИСПРАВЛЕННЫЙ)
 const BoostNode = UtilityEntry.AddNode("boost_node", "panorama/images/items/tome_of_knowledge_png.vtex_c");
 const EnableSmart = BoostNode.AddToggle("enable_smart", false);
 const AutoAccept = BoostNode.AddToggle("auto_accept", true);
-const AutoQueue = BoostNode.AddToggle("auto_queue", true); // Добавил
-const AutoItems = BoostNode.AddToggle("auto_items", true); // Добавил
-const AutoSkill = BoostNode.AddToggle("auto_skill", true); // Добавил
+const AutoQueue = BoostNode.AddToggle("auto_queue", true);
+const AutoItems = BoostNode.AddToggle("auto_items", true);
+const AutoSkill = BoostNode.AddToggle("auto_skill", true);
 
 // --- КООРДИНАТЫ ФИДЕРА ---
 const BASE_RADIANT = new Vector3(-7200, -6600, 384);
 const BASE_DIRE = new Vector3(7200, 6500, 384);
 
-// --- КООРДИНАТЫ БОТА (V59) ---
+// --- КООРДИНАТЫ БОТА (ТВОИ ИЗ V59) ---
 const RAD_BOT_XP = new Vector3(5800, -5200, 256);
 const RAD_MID_XP = new Vector3(-600, -400, 256);
 const RAD_TOP_XP = new Vector3(-5800, 5000, 256);
@@ -74,17 +74,17 @@ const DIRE_MID_XP = new Vector3(400, 200, 256);
 const DIRE_TOP_XP = new Vector3(-4500, 5800, 256);
 const DIRE_JUNGLE = new Vector3(4000, 3000, 256);
 
-let lastFeedTick = 0; // Таймер для Фида (100мс)
-let lastBotTick = 0;  // Таймер для Бота (3000мс)
+let lastFeedTick = 0;
+let lastBotTick = 0;
 
 EventsSDK.on("PostDataUpdate", () => {
-    // 1. АВТО-ПРИНЯТИЕ (Работает всегда)
+    // 1. АВТО-ПРИНЯТИЕ
     if (AutoAccept.value && GameState.IsMatchFound && !GameState.HasAccepted) {
         EventsSDK.ExecuteCommand("dota_accept_match");
         return;
     }
 
-    // 2. АВТО-ПОИСК (Работает если включен Смарт Бот)
+    // 2. АВТО-ПОИСК
     if (EnableSmart.value && AutoQueue.value) {
         if (!GameState.IsInGame && !GameState.IsSearching && !GameState.IsMatchFound) {
             if (!Sleeper.Sleeping("queue")) {
@@ -99,15 +99,14 @@ EventsSDK.on("PostDataUpdate", () => {
     const now = Date.now();
 
     // ==========================================
-    // ЛОГИКА 1: ФИДЕР (Priority High)
+    // ЛОГИКА 1: ФИДЕР (ТВОЙ КОД - BYPASS ВКЛЮЧЕН)
     // ==========================================
     if (RunToRadiant.value || RunToDire.value) {
         let target = RunToRadiant.value ? BASE_RADIANT.Clone() : BASE_DIRE.Clone();
-
-        // Blinks & Skills
+        
         if (FastFeed.value && !Sleeper.Sleeping("blink") && Me.Distance(target) > 800) {
             const blinkSkill = Me.GetAbilityByName("antimage_blink") || Me.GetAbilityByName("queenofpain_blink") || Me.GetAbilityByName("faceless_void_time_walk");
-            const blinkItem = Me.GetItemByName("item_blink") || Me.GetItemByName("item_overwhelming_blink") || Me.GetItemByName("item_swift_blink") || Me.GetItemByName("item_arcane_blink");
+            const blinkItem = Me.GetItemByName("item_blink");
             const activeBlink = (blinkSkill && blinkSkill.CanBeCasted()) ? blinkSkill : (blinkItem && blinkItem.CanBeCasted()) ? blinkItem : null;
             if (activeBlink) {
                 // @ts-ignore
@@ -116,7 +115,6 @@ EventsSDK.on("PostDataUpdate", () => {
             }
         }
 
-        // Movement (100ms interval)
         if (now - lastFeedTick >= 100) {
             lastFeedTick = now;
             target.x += (Math.random() * 800 - 400);
@@ -125,21 +123,20 @@ EventsSDK.on("PostDataUpdate", () => {
                 // @ts-ignore
                 ExecuteOrder.HoldOrdersTarget = target;
                 // @ts-ignore
-                Me.MoveTo(target, false, true);
+                Me.MoveTo(target, false, true); // BYPASS ON
             } catch (e) {
                 // @ts-ignore
                 Me.MoveTo(target);
             }
         }
-        return; // Если фидим - бот не работает
+        return; 
     }
 
     // ==========================================
-    // ЛОГИКА 2: СМАРТ БОТ (V59 Logic)
+    // ЛОГИКА 2: СМАРТ БОТ (STANDARD MOVE)
     // ==========================================
     if (EnableSmart.value) {
-        
-        // --- УЛУЧШЕНИЯ: СКИЛЛЫ И ПРЕДМЕТЫ ---
+        // Скиллы
         if (AutoSkill.value && Me.AbilityPoints > 0 && !Sleeper.Sleeping("skill")) {
             const abilities = Me.Abilities.filter(a => a.CanLevelUp);
             if (abilities.length > 0) {
@@ -148,6 +145,7 @@ EventsSDK.on("PostDataUpdate", () => {
                 Sleeper.Sleep(1000, "skill");
             }
         }
+        // Закуп
         if (AutoItems.value && !Sleeper.Sleeping("buy_items")) {
             if (!Me.GetItemByName("item_power_treads")) {
                 // @ts-ignore
@@ -164,14 +162,14 @@ EventsSDK.on("PostDataUpdate", () => {
             }
         }
 
-        // --- ДВИЖЕНИЕ ИЗ V59 (3000ms interval) ---
-        if (now - lastBotTick >= 3000) {
+        // ДВИЖЕНИЕ (ТЕПЕРЬ ОБЫЧНОЕ - ЧТОБЫ ОБОЙТИ СТЕНЫ)
+        if (now - lastBotTick >= 1000) { // Интервал 1 сек
             lastBotTick = now;
             
             const isRadiant = LocalPlayer.Team === 2;
             let target = new Vector3(0, 0, 0);
 
-            // ЗАЩИТА ТРОНА (ЕДИНСТВЕННОЕ ВАЖНОЕ ДОБАВЛЕНИЕ В ДВИЖЕНИЕ)
+            // Защита трона
             const ancient = EntityManager.GetEntitiesByClass("npc_dota_fortress").find(e => e.IsMyTeam);
             // @ts-ignore
             if (ancient && ancient.HealthPercent < 100) {
@@ -180,7 +178,7 @@ EventsSDK.on("PostDataUpdate", () => {
                 return;
             }
 
-            // ЛОГИКА КООРДИНАТ V59
+            // Выбор точки
             if (Me.Level < 2) {
                 target = isRadiant ? RAD_BOT_XP.Clone() : DIRE_BOT_XP.Clone();
             } else if (Me.Level >= 2 && Me.Level < 6) {
@@ -198,15 +196,12 @@ EventsSDK.on("PostDataUpdate", () => {
                 target.y += (Math.random() * 300 - 150);
             }
 
+            // ВНИМАНИЕ: ТУТ ОБЫЧНЫЙ MoveTo, ЧТОБЫ БОТ МОГ ХОДИТЬ
             try {
-                // МЕТОД ДВИЖЕНИЯ ИЗ V59
                 // @ts-ignore
-                ExecuteOrder.HoldOrdersTarget = target;
-                // @ts-ignore
-                Me.MoveTo(target, false, true);
+                Me.MoveTo(target); 
             } catch (e) {
-                // @ts-ignore
-                Me.MoveTo(target);
+                console.log("Move error");
             }
         }
     }
