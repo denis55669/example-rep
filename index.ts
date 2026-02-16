@@ -7,27 +7,28 @@ import {
     ExecuteOrder
 } from "github.com/octarine-public/wrapper/index"
 
-// --- МЕНЮ (Категорія за замовчуванням) ---
+// --- МЕНЮ (Твоя легендарна категорія) ---
 const Main = Menu.AddEntry("best cheat octorine", "panorama/images/items/aegis_png.vtex_c");
 
-// 1. Вкладка Feed (Твій перевірений варіант)
+// 1. Вкладка Feed (ЗАФІКСОВАНО - ВЕРСІЯ V36)
 const FeedTab = Main.AddNode("feed");
 const RunToRadiant = FeedTab.AddToggle("1. Feed RADIANT (Вниз)", false);
 const RunToDire = FeedTab.AddToggle("2. Feed DIRE (Вгору)", false);
 
-// 2. Вкладка Armlet (Логіка з Lua-скрипта)
+// 2. Вкладка Armlet (ПЕРЕРОБЛЕНО ПІД МОДИФІКАТОРИ)
 const ArmletTab = Main.AddNode("armlet abuse");
 const EnableArmlet = ArmletTab.AddToggle("Увімкнути Абуз", false);
 const Threshold = ArmletTab.AddSlider("Поріг HP", 350, 100, 800, 10);
-const CustomDelay = ArmletTab.AddSlider("Швидкість абузу (мс)", 50, 20, 300, 10);
+const DebugArmlet = ArmletTab.AddToggle("Показувати логи (Debug)", false);
 
 // Константи
 const BASE_RADIANT = new Vector3(-7200, -6600, 384);
 const BASE_DIRE = new Vector3(7200, 6500, 384);
+const ARMLET_MODIFIER = "modifier_item_armlet_unholy_strength"; //
 
 let lastTick = 0;
-let lastArmletAction = 0;
-let isToggling = false; // Чи ми зараз у процесі перемикання
+let lastArmlet = 0;
+let abuseState = 0; // 0 - очікування, 1 - вимкнули, чекаємо тік для включення
 
 EventsSDK.on("PostDataUpdate", () => {
     const Me = LocalPlayer?.Hero;
@@ -35,7 +36,7 @@ EventsSDK.on("PostDataUpdate", () => {
     const now = Date.now();
 
     // ==========================================
-    // ЛОГІКА FEED (БЕЗ ЗМІН)
+    // ЛОГІКА FEED (ТВІЙ ЛЕГЕНДАРНИЙ ВАРІАНТ)
     // ==========================================
     if (RunToRadiant.value || RunToDire.value) {
         if (now - lastTick >= 100) {
@@ -61,50 +62,50 @@ EventsSDK.on("PostDataUpdate", () => {
     }
 
     // ==========================================
-    // ЛОГІКА ARMLET (PRO LOGIC)
+    // ЛОГІКА ARMLET (MODIFIER CHECK)
     // ==========================================
     if (EnableArmlet.value) {
         const armlet = GetArmlet(Me);
         
-        // Якщо ми у фонтані - не абузимо
-        if (Me.HealthRegen > 50) return;
-
-        if (armlet && armlet.CanCast) {
+        if (armlet) {
+            // Перевіряємо стан через наявність ефекту армлета на герої
             // @ts-ignore
-            const isActive = armlet.IsToggled; // Стан Unholy Strength
+            const isUnholyActive = Me.HasModifier(ARMLET_MODIFIER);
 
-            // КРОК 1: HP впало -> Вимикаємо (якщо включений)
-            if (!isToggling && isActive && Me.Health < Threshold.value) {
-                if (now - lastArmletAction > 250) { // Захист як у Lua
-                    ToggleItem(armlet);
-                    isToggling = true;
-                    lastArmletAction = now;
+            if (DebugArmlet.value && now - lastArmlet > 1000) {
+                console.log(`[Armlet] HP: ${Me.Health}, Active: ${isUnholyActive}, State: ${abuseState}`);
+            }
+
+            // КРОК 1: HP нижче порогу + Армлет активний -> Вимикаємо
+            if (abuseState === 0 && isUnholyActive && Me.Health < Threshold.value) {
+                if (now - lastArmlet > 250) {
+                    // @ts-ignore
+                    armlet.CastNoTarget();
+                    abuseState = 1;
+                    lastArmlet = now;
+                    if (DebugArmlet.value) console.log("[Armlet] OFF!");
                 }
             }
-            
-            // КРОК 2: Ми вимкнули -> Вмикаємо назад
-            if (isToggling && !isActive) {
-                // Чекаємо мікро-затримку для реєстрації сервером
-                if (now - lastArmletAction >= CustomDelay.value) {
-                    ToggleItem(armlet);
-                    isToggling = false;
-                    lastArmletAction = now;
+
+            // КРОК 2: Ми щойно вимкнули і бачимо, що модифікатор зник -> Вмикаємо назад
+            if (abuseState === 1 && !isUnholyActive) {
+                // Мінімальна затримка 40мс для реєстрації сервером
+                if (now - lastArmlet >= 40) {
+                    // @ts-ignore
+                    armlet.CastNoTarget();
+                    abuseState = 0;
+                    lastArmlet = now;
+                    if (DebugArmlet.value) console.log("[Armlet] ON!");
                 }
             }
-            
-            // Скидання стану, якщо забагалося
-            if (isToggling && now - lastArmletAction > 1000) isToggling = false;
+
+            // Скидання стану, якщо включення не відбулося за 1 сек
+            if (abuseState === 1 && now - lastArmlet > 1000) abuseState = 0;
+        } else if (DebugArmlet.value && now - lastArmlet > 5000) {
+            console.log("[Armlet] Error: Item not found in inventory!");
         }
     }
 });
-
-// Універсальна функція перемикання
-function ToggleItem(item: any) {
-    try {
-        if (item.Toggle) item.Toggle(); // Спроба через прямий метод Toggle
-        else item.CastNoTarget();      // Спроба через звичайний каст
-    } catch (e) {}
-}
 
 function GetArmlet(unit: Unit) {
     for (let i = 0; i <= 5; i++) {
@@ -115,4 +116,4 @@ function GetArmlet(unit: Unit) {
     return null;
 }
 
-console.log("best cheat octorine: Feed + Armlet Pro V4 Loaded");
+console.log("best cheat octorine: Feed + Armlet V5 Loaded");
