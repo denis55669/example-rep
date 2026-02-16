@@ -8,27 +8,29 @@ import {
     TickSleeper,
     GameState,
     EntityManager,
-    GameRules
+    GameRules,
+    Ability
 } from "github.com/octarine-public/wrapper/index"
 
 const Sleeper = new TickSleeper();
 
-// --- МЕНЮ (Utility -> Smart Bot) ---
+// --- МЕНЮ ---
 const UtilityEntry = Menu.AddEntry("Utility");
-const BotNode = UtilityEntry.AddNode("Smart Bot", "panorama/images/items/tome_of_knowledge_png.vtex_c");
+const BotNode = UtilityEntry.AddNode("Smart Bot V99", "panorama/images/items/tome_of_knowledge_png.vtex_c");
 
-const EnableBot = BotNode.AddToggle("Enable Movement", true); // Теперь включен по умолчанию
-const AutoSkill = BotNode.AddToggle("Auto Level Skills (Sven 2nd)", true);
-const AutoItems = BotNode.AddToggle("Auto Buy Items", true);
+const EnableBot = BotNode.AddToggle("Enable Movement", true);
+const AutoSkill = BotNode.AddToggle("Auto Level Skills", true);
+const AutoCast = BotNode.AddToggle("Auto Cast (Spells)", true);
 
-// --- ГЛУБОКИЕ ТОЧКИ ---
+// --- КООРДИНАТИ (ТВОЇ + ЛІС) ---
 const RAD_SPOTS = {
     BOT_XP: new Vector3(6600, -6600, 256),  
     BOT_LANE: new Vector3(6200, -5800, 256), 
     MID_XP: new Vector3(-1100, -1100, 256), 
     MID_LANE: new Vector3(-500, -500, 256),
     TOP_XP: new Vector3(-6600, 5200, 256), 
-    TOP_LANE: new Vector3(-5800, 5200, 256)
+    TOP_LANE: new Vector3(-5800, 5200, 256),
+    JUNGLE: new Vector3(1000, -4000, 256) // Додав для 10 смертей
 };
 
 const DIRE_SPOTS = {
@@ -37,7 +39,8 @@ const DIRE_SPOTS = {
     MID_XP: new Vector3(1100, 1100, 256),
     MID_LANE: new Vector3(500, 500, 256),
     TOP_XP: new Vector3(-4800, 6600, 256), 
-    TOP_LANE: new Vector3(-5200, 6000, 256)
+    TOP_LANE: new Vector3(-5200, 6000, 256),
+    JUNGLE: new Vector3(4000, 3000, 256)
 };
 
 let lastMoveTick = 0;
@@ -46,55 +49,116 @@ EventsSDK.on("PostDataUpdate", () => {
     const Me = LocalPlayer?.Hero;
     if (!Me || !Me.IsAlive) return;
 
-    // 1. ПОЛНОЕ ВЫКЛЮЧЕНИЕ ПОСЛЕ 10 ЛВЛ
+    // 1. ПРИМУСОВИЙ СТАРТ (0:00 - 1:00)
+    // Якщо бот вимкнений на початку гри - вмикаємо самі
+    if (Me.Level < 2 && GameRules && GameRules.GameTime < 60) {
+        if (!EnableBot.value) EnableBot.value = true;
+    }
+
+    // 2. ПОВНЕ ВИМИКАННЯ (10 РІВЕНЬ)
     if (Me.Level >= 10) {
         if (EnableBot.value) EnableBot.value = false;
+        
+        // Виняток: Якщо 10 смертей, йдемо в ліс навіть на 10 рівні (щоб не стояти на фонтані)
+        // @ts-ignore
+        if (Me.Deaths >= 10 && (Date.now() - lastMoveTick >= 3000)) {
+            lastMoveTick = Date.now();
+            const isRadiant = LocalPlayer.Team === 2;
+            const jungle = isRadiant ? RAD_SPOTS.JUNGLE : DIRE_SPOTS.JUNGLE;
+            // @ts-ignore
+            Me.MoveTo(jungle);
+        }
         return; 
     }
 
     if (!EnableBot.value) return;
     const now = Date.now();
 
-    // 2. ПРОКАЧКА СВЕНА (MAX 2-й СКИЛЛ)
+    // 3. ПРОКАЧКА СВЕНА/ТАЙДА (Anti-AFK FIX)
     if (AutoSkill.value && Me.AbilityPoints > 0 && !Sleeper.Sleeping("skill_up")) {
-        const cleave = Me.GetAbilityByName("sven_great_cleave");
-        const hammer = Me.GetAbilityByName("sven_storm_bolt");
-        const targetAbility = (cleave && cleave.CanLevelUp) ? cleave : hammer;
-        if (targetAbility) {
+        let ability = null;
+
+        // Пріоритети (2 скіл -> 3 скіл -> Ульт)
+        if (Me.UnitName === "npc_dota_hero_sven") {
+            const s2 = Me.GetAbilityByName("sven_great_cleave");
+            const s3 = Me.GetAbilityByName("sven_warcry");
+            const ult = Me.GetAbilityByName("sven_gods_strength");
+            if (ult?.CanLevelUp) ability = ult;
+            else if (s2?.CanLevelUp) ability = s2;
+            else if (s3?.CanLevelUp) ability = s3;
+        } else if (Me.UnitName === "npc_dota_hero_tidehunter") {
+            const s2 = Me.GetAbilityByName("tidehunter_kraken_shell"); // Пасивка
+            const s3 = Me.GetAbilityByName("tidehunter_anchor_smash"); // Якір
+            const ult = Me.GetAbilityByName("tidehunter_ravage");
+            if (ult?.CanLevelUp) ability = ult;
+            else if (s3?.CanLevelUp) ability = s3;
+            else if (s2?.CanLevelUp) ability = s2;
+        }
+
+        // ЗАПОБІЖНИК: Якщо пріоритетний скіл не можна качати - беремо БУДЬ-ЯКИЙ
+        // Це вирішує проблему, коли бот стоїть АФК
+        if (!ability) {
+            ability = Me.Abilities.find(a => a.CanLevelUp && !a.IsHidden && a.Name !== "attribute_bonus");
+        }
+        // Якщо зовсім нічого - плюсики
+        if (!ability) {
+            ability = Me.Abilities.find(a => a.CanLevelUp && a.Name === "attribute_bonus");
+        }
+
+        if (ability) {
             // @ts-ignore
-            Me.UpgradeAbility(targetAbility);
-            Sleeper.Sleep(2000, "skill_up");
+            Me.UpgradeAbility(ability);
+            Sleeper.Sleep(1000, "skill_up");
         }
     }
 
-    // 3. ЗАКУП (PT -> BF -> MOM)
-    if (AutoItems.value && !Sleeper.Sleeping("buy_logic")) {
-        const items = ["item_power_treads", "item_bfury", "item_mask_of_madness"];
-        for (const itemName of items) {
-            if (!Me.GetItemByName(itemName)) {
-                // @ts-ignore
-                Me.PurchaseItem(itemName);
-                Sleeper.Sleep(5000, "buy_logic");
-                break;
-            }
+    // 4. АВТО-КАСТ (Warcry / Anchor Smash)
+    if (AutoCast.value && !Sleeper.Sleeping("cast_spell")) {
+        const spells = Me.Abilities.filter(a => 
+            (a.Name.includes("warcry") || a.Name.includes("anchor_smash") || a.Name.includes("gods_strength") || a.Name.includes("ravage")) 
+            && a.CanBeCasted() && a.ManaCost <= Me.Mana
+        );
+
+        for (const s of spells) {
+            // @ts-ignore
+            Me.CastNoTarget(s);
+            Sleeper.Sleep(2000, "cast_spell"); // Пауза щоб не спамив
+            break;
         }
     }
 
-    // 4. ДВИЖЕНИЕ (РАБОТАЕТ С 0 МИНУТЫ)
+    // 5. ДВИЖЕНИЕ (ТВІЙ РОБОЧИЙ МЕТОД + РОТАЦІЯ)
     if (now - lastMoveTick >= 3000) {
         lastMoveTick = now;
         const isRadiant = LocalPlayer.Team === 2;
         const spots = isRadiant ? RAD_SPOTS : DIRE_SPOTS;
         
         let target: Vector3;
-        const isHideLevel = (Me.Level % 2 !== 0); // 1, 3, 5, 7, 9 - прячемся
 
-        // Выбор линии
-        if (Me.Level < 2) {
+        // ПЕРЕВІРКА НА 10 СМЕРТЕЙ
+        // @ts-ignore
+        if (Me.Deaths >= 10) {
+            target = spots.JUNGLE.Clone();
+            target.x += (Math.random() * 1000 - 500); // Гуляємо по лісу
+            target.y += (Math.random() * 1000 - 500);
+            try {
+                // @ts-ignore
+                Me.MoveTo(target);
+            } catch (e) {}
+            return; // Виходимо, щоб не йти на лінію
+        }
+
+        // ЦИКЛ ЛІНІЙ: Змінюємо лінію кожні 2 рівні
+        // 1-2 -> Bot, 3-4 -> Mid, 5-6 -> Top, 7-8 -> Bot
+        const cycle = Math.floor((Me.Level - 1) / 2) % 3;
+        
+        const isHideLevel = (Me.Level % 2 !== 0); // 1, 3, 5... (Ховаємось)
+
+        if (cycle === 0) { // BOT
             target = isHideLevel ? spots.BOT_XP.Clone() : spots.BOT_LANE.Clone();
-        } else if (Me.Level < 6) {
+        } else if (cycle === 1) { // MID
             target = isHideLevel ? spots.MID_XP.Clone() : spots.MID_LANE.Clone();
-        } else {
+        } else { // TOP
             target = isHideLevel ? spots.TOP_XP.Clone() : spots.TOP_LANE.Clone();
         }
 
