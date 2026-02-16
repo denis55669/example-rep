@@ -7,26 +7,27 @@ import {
     ExecuteOrder
 } from "github.com/octarine-public/wrapper/index"
 
-// --- МЕНЮ (Твоя категорія) ---
+// --- МЕНЮ (Категорія за замовчуванням) ---
 const Main = Menu.AddEntry("best cheat octorine", "panorama/images/items/aegis_png.vtex_c");
 
-// Вкладка Feed (Твій перевірений код)
+// 1. Вкладка Feed (ЗАФІКСОВАНО - НЕ ЗМІНЮВАТИ)
 const FeedTab = Main.AddNode("feed");
 const RunToRadiant = FeedTab.AddToggle("1. Feed RADIANT (Вниз)", false);
 const RunToDire = FeedTab.AddToggle("2. Feed DIRE (Вгору)", false);
 
-// Вкладка Armlet (Спрощена логіка)
+// 2. Вкладка Armlet (ПРОФЕСІЙНИЙ АБУЗ)
 const ArmletTab = Main.AddNode("armlet abuse");
 const EnableArmlet = ArmletTab.AddToggle("Увімкнути Абуз", false);
-const Threshold = ArmletTab.AddSlider("Поріг HP", 350, 100, 800, 10);
+const Threshold = ArmletTab.AddSlider("Поріг HP для абузу", 300, 100, 700, 10); // За замовчуванням 300
+const ToggleDelay = ArmletTab.AddSlider("Затримка перемикання (мс)", 40, 10, 200, 10);
 
 // Константи
 const BASE_RADIANT = new Vector3(-7200, -6600, 384);
 const BASE_DIRE = new Vector3(7200, 6500, 384);
 
 let lastTick = 0;
-let lastArmlet = 0;
-let state = 0; // 0 - спокій, 1 - вимкнули, чекаємо тік, щоб увімкнути
+let lastArmletAction = 0;
+let armletState = "READY"; // READY -> TURNING_OFF -> TURNING_ON
 
 EventsSDK.on("PostDataUpdate", () => {
     const Me = LocalPlayer?.Hero;
@@ -34,7 +35,7 @@ EventsSDK.on("PostDataUpdate", () => {
     const now = Date.now();
 
     // ==========================================
-    // 1. ЛОГІКА FEED (Твій ідеальний варіант)
+    // ЛОГІКА FEED (ТВІЙ ЛЕГЕНДАРНИЙ ВАРІАНТ)
     // ==========================================
     if (RunToRadiant.value || RunToDire.value) {
         if (now - lastTick >= 100) {
@@ -48,9 +49,9 @@ EventsSDK.on("PostDataUpdate", () => {
                 target.y += (Math.random() * 800 - 400);
                 try {
                     // @ts-ignore
-                    ExecuteOrder.HoldOrdersTarget = target; //
+                    ExecuteOrder.HoldOrdersTarget = target;
                     // @ts-ignore
-                    Me.MoveTo(target, false, true); //
+                    Me.MoveTo(target, false, true);
                 } catch (e) {
                     // @ts-ignore
                     Me.MoveTo(target);
@@ -60,32 +61,42 @@ EventsSDK.on("PostDataUpdate", () => {
     }
 
     // ==========================================
-    // 2. ЛОГІКА ARMLET (Максимально проста)
+    // ЛОГІКА ARMLET (SMART TOGGLE)
     // ==========================================
-    if (EnableArmlet.value && now - lastArmlet > 50) {
+    if (EnableArmlet.value) {
         const armlet = GetArmlet(Me);
+        
         if (armlet && armlet.CanCast) {
             // @ts-ignore
-            const isActive = armlet.IsToggled;
+            const isToggled = armlet.IsToggled; // Чи включена Unholy Strength
 
-            // Якщо HP мало і армлет включений -> Вимикаємо
-            if (Me.Health < Threshold.value && isActive && state === 0) {
+            // КРОК 1: Якщо мало HP і армлет включений - ВИМИКАЄМО
+            if (armletState === "READY" && isToggled && Me.Health < Threshold.value) {
                 // @ts-ignore
                 armlet.CastNoTarget();
-                state = 1;
-                lastArmlet = now;
-            } 
-            // Якщо ми щойно вимкнули -> Вмикаємо назад
-            else if (!isActive && state === 1) {
-                // @ts-ignore
-                armlet.CastNoTarget();
-                state = 0;
-                lastArmlet = now;
+                armletState = "TURNING_ON"; // Готуємось включити
+                lastArmletAction = now;
+            }
+            
+            // КРОК 2: Якщо вимкнули - ВМИКАЄМО назад через мікро-затримку
+            if (armletState === "TURNING_ON" && !isToggled) {
+                if (now - lastArmletAction >= ToggleDelay.value) {
+                    // @ts-ignore
+                    armlet.CastNoTarget();
+                    armletState = "READY";
+                    lastArmletAction = now;
+                }
+            }
+
+            // ЗАХИСТ: Якщо застрягли у вимкненому стані - виправляємо
+            if (armletState === "TURNING_ON" && now - lastArmletAction > 500) {
+                armletState = "READY";
             }
         }
     }
 });
 
+// Допоміжна функція пошуку армлета (слот Z та інші)
 function GetArmlet(unit: Unit) {
     for (let i = 0; i <= 5; i++) {
         const item = unit.GetItemInSlot(i);
@@ -95,4 +106,4 @@ function GetArmlet(unit: Unit) {
     return null;
 }
 
-console.log("best cheat octorine: Stable Loaded");
+console.log("best cheat octorine: Feed Lite + Armlet God V3 Loaded");
