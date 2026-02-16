@@ -15,24 +15,24 @@ const Sleeper = new TickSleeper();
 
 // --- ЛОКАЛІЗАЦІЯ ---
 Menu.Localization.AddLocalizationUnit("english", new Map([
-    ["feed_node", "Feed (Bad Guy)"],
-    ["run_radiant", "1. Feed RADIANT (Down)"],
-    ["run_dire", "2. Feed DIRE (Up)"],
-    ["fast_feed", "3. Fast Feed (Blinks & Skills)"],
-    ["boost_node", "Smart Bot (Standard Move)"],
+    ["feed_node", "Feed (Working)"],
+    ["run_radiant", "1. Feed RADIANT"],
+    ["run_dire", "2. Feed DIRE"],
+    ["fast_feed", "3. Fast Feed"],
+    ["boost_node", "Smart Bot (Feed Move)"],
     ["enable_smart", "Enable Smart Farm"],
     ["auto_accept", "Auto Accept Match"],
-    ["auto_queue", "Auto Find (Press Button)"],
+    ["auto_queue", "Auto Find (Button Press)"],
     ["auto_items", "Auto Buy (PT -> BF -> MoM)"],
     ["auto_skill", "Auto Level Up Skills"]
 ]));
 
 Menu.Localization.AddLocalizationUnit("russian", new Map([
-    ["feed_node", "Фид (Bad Guy)"],
-    ["run_radiant", "1. Фид RADIANT (Вниз)"],
-    ["run_dire", "2. Фид DIRE (Вверх)"],
-    ["fast_feed", "3. Быстрый фид (Блинки и Скиллы)"],
-    ["boost_node", "Смарт Бот (Обычный бег)"],
+    ["feed_node", "Фид (Рабочий)"],
+    ["run_radiant", "1. Фид RADIANT"],
+    ["run_dire", "2. Фид DIRE"],
+    ["fast_feed", "3. Быстрый фид"],
+    ["boost_node", "Смарт Бот (Движение Фида)"],
     ["enable_smart", "Включить Умный Фарм"],
     ["auto_accept", "Авто-принятие игры"],
     ["auto_queue", "Авто-Поиск (Жмет кнопку)"],
@@ -58,18 +58,16 @@ const AutoQueue = BoostNode.AddToggle("auto_queue", true);
 const AutoItems = BoostNode.AddToggle("auto_items", true);
 const AutoSkill = BoostNode.AddToggle("auto_skill", true);
 
-// --- КООРДИНАТЫ БАЗ (ФИД) ---
+// --- КООРДИНАТЫ ---
 const BASE_RADIANT = new Vector3(-7200, -6600, 384);
 const BASE_DIRE = new Vector3(7200, 6500, 384);
 
-// --- КООРДИНАТЫ ЛИНИЙ (БОТ - ДЕРЕВЬЯ) ---
-// Radiant
+// Деревья (безопасные зоны)
 const RAD_BOT_TREE = new Vector3(6200, -6200, 256); 
 const RAD_MID_TREE = new Vector3(-650, -350, 256);
 const RAD_TOP_TREE = new Vector3(-6200, 5500, 256);
 const RAD_JUNGLE = new Vector3(1000, -4000, 256);
 
-// Dire
 const DIRE_BOT_TREE = new Vector3(6200, -5500, 256);
 const DIRE_MID_TREE = new Vector3(650, 350, 256);
 const DIRE_TOP_TREE = new Vector3(-4500, 5800, 256);
@@ -99,7 +97,7 @@ EventsSDK.on("PostDataUpdate", () => {
     if (!Me || !Me.IsAlive) return;
 
     // ==========================================
-    // ЛОГИКА 1: ФИДЕР (BYPASS MODE - СКВОЗЬ СТЕНЫ)
+    // ЛОГИКА 1: ФИДЕР
     // ==========================================
     if (RunToRadiant.value || RunToDire.value) {
         let target = RunToRadiant.value ? BASE_RADIANT.Clone() : BASE_DIRE.Clone();
@@ -110,7 +108,6 @@ EventsSDK.on("PostDataUpdate", () => {
                                Me.GetAbilityByName("faceless_void_time_walk");
             const blinkItem = Me.GetItemByName("item_blink");
             const activeBlink = (blinkSkill && blinkSkill.CanBeCasted()) ? blinkSkill : (blinkItem && blinkItem.CanBeCasted()) ? blinkItem : null;
-
             if (activeBlink) {
                 // @ts-ignore
                 Me.CastPosition(activeBlink, Me.Position.Extend(target, 1150));
@@ -126,7 +123,7 @@ EventsSDK.on("PostDataUpdate", () => {
                 // @ts-ignore
                 ExecuteOrder.HoldOrdersTarget = target;
                 // @ts-ignore
-                Me.MoveTo(target, false, true); // TRUE = Bypass (для фида)
+                Me.MoveTo(target, false, true); // BYPASS
             } catch (e) {
                 // @ts-ignore
                 Me.MoveTo(target);
@@ -136,7 +133,7 @@ EventsSDK.on("PostDataUpdate", () => {
     }
 
     // ==========================================
-    // ЛОГИКА 2: УМНЫЙ БОТ (STANDARD MODE - ОБЫЧНЫЙ БЕГ)
+    // ЛОГИКА 2: СМАРТ БОТ (C ТЕМ ЖЕ ДВИЖЕНИЕМ)
     // ==========================================
     if (EnableSmart.value) {
         // АВТО-СКИЛЛЫ
@@ -149,7 +146,7 @@ EventsSDK.on("PostDataUpdate", () => {
             }
         }
 
-        // АВТО-ЗАКУП (PT -> BF -> MOM)
+        // АВТО-ЗАКУП
         if (AutoItems.value && !Sleeper.Sleeping("buy_items")) {
             if (!Me.GetItemByName("item_power_treads")) {
                 // @ts-ignore
@@ -166,8 +163,8 @@ EventsSDK.on("PostDataUpdate", () => {
             }
         }
 
-        // ДВИЖЕНИЕ (СТАНДАРТНОЕ, ЧТОБЫ ОБХОДИТЬ СТЕНЫ)
-        if (Date.now() - lastMove >= 1000) {
+        // ДВИЖЕНИЕ (ТЕХНОЛОГИЯ BAD GUY)
+        if (Date.now() - lastMove >= 500) {
             lastMove = Date.now();
             const isRadiant = LocalPlayer.Team === 2;
             
@@ -176,11 +173,13 @@ EventsSDK.on("PostDataUpdate", () => {
             // @ts-ignore
             if (ancient && ancient.HealthPercent < 100) {
                 // @ts-ignore
-                Me.MoveTo(ancient.Position);
+                ExecuteOrder.HoldOrdersTarget = ancient.Position;
+                // @ts-ignore
+                Me.MoveTo(ancient.Position, false, true); // BYPASS
                 return;
             }
 
-            // 2. ЦИКЛ ЛИНИЙ
+            // 2. ЦИКЛ
             let target = new Vector3(0,0,0);
 
             if (Me.Level < 2) { 
@@ -195,18 +194,20 @@ EventsSDK.on("PostDataUpdate", () => {
                 target.y += (Math.random() * 1000 - 500);
             }
 
-            // Рандом
             if (Me.Level < 10) {
                 target.x += (Math.random() * 300 - 150);
                 target.y += (Math.random() * 300 - 150);
             }
 
-            // ВАЖНО: ТУТ ОБЫЧНЫЙ MoveTo БЕЗ BYPASS
             try {
+                // ВОТ ОНО - ТО ЖЕ САМОЕ, ЧТО И В ФИДЕ
                 // @ts-ignore
-                Me.MoveTo(target); // Просто идти
+                ExecuteOrder.HoldOrdersTarget = target;
+                // @ts-ignore
+                Me.MoveTo(target, false, true); // BYPASS ВКЛЮЧЕН
             } catch (e) {
-                console.log("Move Error");
+                // @ts-ignore
+                Me.MoveTo(target);
             }
         }
     }
