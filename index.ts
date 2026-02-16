@@ -7,21 +7,24 @@ import {
     Unit
 } from "github.com/octarine-public/wrapper/index"
 
-// Оголошуємо глобальну функцію з octarine-core.d.ts, щоб TypeScript не лаявся
+// --- ГЛОБАЛЬНІ ЗМІННІ З OCTARINE-CORE ---
+// Оголошуємо доступ до пам'яті та функції наказів
+declare var IOBuffer: Float32Array;
 declare function PrepareUnitOrders(obj: {
     OrderType: number,
-    TargetIndex?: number,
-    Position?: Vector3,
-    AbilityIndex?: number,
-    Issuers?: number[], // Це ключовий момент!
+    Target?: number,
+    Ability?: number,
+    Issuers?: number[] | number,
     Queue?: boolean,
-    ShowEffects?: boolean
+    ShowEffects?: boolean,
+    Flags?: number
 }): void;
 
-const Main = Menu.AddEntry("Grief Lord V32", "panorama/images/items/divine_rapier_png.vtex_c");
-const RunDire = Main.AddToggle("1. Run Dire (Вгору)", false);
-const RunRadiant = Main.AddToggle("2. Run Radiant (Вниз)", false);
-const FeedAll = Main.AddToggle("3. Feed ALL (Hero + Couriers + Allies)", false);
+// --- МЕНЮ ---
+const Main = Menu.AddEntry("Grief Lord V33", "panorama/images/items/divine_rapier_png.vtex_c");
+const RunDire = Main.AddToggle("1. БІГТИ ВГОРУ (Dire)", false);
+const RunRadiant = Main.AddToggle("2. БІГТИ ВНИЗ (Radiant)", false);
+const FeedAll = Main.AddToggle("3. ФІД ВСІМА (Герой + Кури + Тіммейти)", false);
 
 const DOTA_UNIT_ORDER_MOVE_TO_POSITION = 5;
 let lastTick = 0;
@@ -31,10 +34,10 @@ EventsSDK.on("PostDataUpdate", () => {
     if (!Me || !Me.IsAlive) return;
 
     const now = Date.now();
-    if (now - lastTick < 250) return;
+    if (now - lastTick < 250) return; // 4 рази на секунду
     lastTick = now;
 
-    // 1. Ціль
+    // 1. ВИЗНАЧАЄМО ЦІЛЬ
     let target: Vector3 | null = null;
     if (RunRadiant.value) target = new Vector3(-7200, -6600, 384);
     else if (RunDire.value) target = new Vector3(7200, 6500, 384);
@@ -45,59 +48,66 @@ EventsSDK.on("PostDataUpdate", () => {
     target.x += (Math.random() * 200 - 100);
     target.y += (Math.random() * 200 - 100);
 
-    // 2. Збираємо армію
-    const army: Unit[] = [];
-
+    // 2. БЕЗПЕЧНИЙ ФІД ГЕРОЄМ (V24 Style - Працює 100%)
     if (FeedAll.value) {
-        // Герой
-        army.push(Me);
+        try {
+            // @ts-ignore
+            Me.MoveTo(target); 
+        } catch (e) {}
+    }
 
-        // Кур'єри
+    // 3. МАСОВИЙ НАКАЗ ЧЕРЕЗ IOBuffer (Для Кур та Тіммейтів)
+    if (FeedAll.value) {
+        const issuers: number[] = [];
+
+        // Збираємо Кур'єрів
         const couriers = EntityManager.GetEntitiesByClass("npc_dota_courier");
         for (const cour of couriers) {
             // @ts-ignore
             if (cour.IsAlive && cour.IsMyTeam) {
                 // @ts-ignore
-                army.push(cour);
+                issuers.push(cour.Handle); // Додаємо Handle юніта
             }
         }
 
-        // Союзники (Shared)
+        // Збираємо Тіммейтів (Окрім себе)
         const heroes = EntityManager.GetEntitiesByClass("npc_dota_hero_*");
         for (const hero of heroes) {
             // @ts-ignore
             if (hero.IsAlive && hero.IsMyTeam && !hero.IsMe) {
-                 // @ts-ignore
-                army.push(hero);
+                // @ts-ignore
+                issuers.push(hero.Handle);
             }
         }
-    }
 
-    // 3. ВИКОНАННЯ ЧЕРЕЗ RAW API
-    // Ми не перебираємо цикл, ми відправляємо ОДИН пакет для всієї групи!
-    // Це працює набагато потужніше, ніж MoveTo по черзі.
-    
-    if (army.length > 0) {
-        // Збираємо індекси всіх юнітів
-        // @ts-ignore
-        const issuers = army.map(u => u.Handle); 
-        // Handle - це внутрішній номер юніта, потрібний для PrepareUnitOrders
+        // ЯКЩО Є КОМУ БІГТИ - ВИКОНУЄМО МАГІЮ
+        if (issuers.length > 0) {
+            try {
+                // КРОК 1: Записуємо координати в IOBuffer (Offset 0)
+                // IOBuffer - це масив чисел float.
+                // 0 = X, 1 = Y, 2 = Z
+                if (typeof IOBuffer !== 'undefined') {
+                    IOBuffer[0] = target.x;
+                    IOBuffer[1] = target.y;
+                    IOBuffer[2] = target.z;
 
-        try {
-            // Прямий виклик движка
-            PrepareUnitOrders({
-                OrderType: DOTA_UNIT_ORDER_MOVE_TO_POSITION,
-                Position: target,
-                Issuers: issuers, // Відправляємо масивом!
-                Queue: false,
-                ShowEffects: true
-            });
-            
-            // console.log(`Sent Raw Order to ${issuers.length} units`);
-        } catch (e) {
-            console.log("Raw Order Failed");
+                    // КРОК 2: Викликаємо функцію без координат (вона візьме їх з буфера)
+                    PrepareUnitOrders({
+                        OrderType: DOTA_UNIT_ORDER_MOVE_TO_POSITION,
+                        Issuers: issuers, // Масив юнітів
+                        Queue: false,
+                        ShowEffects: true
+                    });
+                    
+                    // console.log(`Sent IOBuffer Order to ${issuers.length} units`);
+                } else {
+                    console.log("Error: IOBuffer not found!");
+                }
+            } catch (e) {
+                console.log("Memory Access Failed");
+            }
         }
     }
 });
 
-console.log("Grief Lord V32: Direct Engine Access Loaded!");
+console.log("Grief Lord V33: Memory Write Loaded!");
