@@ -4,32 +4,29 @@ import {
     Menu,
     Vector3,
     Unit,
-    ExecuteOrder,
-    Enum
+    ExecuteOrder
 } from "github.com/octarine-public/wrapper/index"
 
-// --- МЕНЮ ---
+// --- МЕНЮ (Твоя категорія) ---
 const Main = Menu.AddEntry("best cheat octorine", "panorama/images/items/aegis_png.vtex_c");
 
-// 1. Вкладка Feed (Твій найкращий варіант)
+// Вкладка Feed (Твій перевірений код)
 const FeedTab = Main.AddNode("feed");
 const RunToRadiant = FeedTab.AddToggle("1. Feed RADIANT (Вниз)", false);
 const RunToDire = FeedTab.AddToggle("2. Feed DIRE (Вгору)", false);
 
-// 2. Вкладка Armlet
+// Вкладка Armlet (Спрощена логіка)
 const ArmletTab = Main.AddNode("armlet abuse");
 const EnableArmlet = ArmletTab.AddToggle("Увімкнути Абуз", false);
 const Threshold = ArmletTab.AddSlider("Поріг HP", 350, 100, 800, 10);
-const AbuseKey = ArmletTab.AddKeyBind("Примусовий абуз (Кнопка)", 0); // Можна затиснути для ручного абузу
 
-// Константи та змінні
+// Константи
 const BASE_RADIANT = new Vector3(-7200, -6600, 384);
 const BASE_DIRE = new Vector3(7200, 6500, 384);
-const DOTA_UNIT_ORDER_CAST_TOGGLE = 11; // Пряма команда перемикання
 
 let lastTick = 0;
 let lastArmlet = 0;
-let isToggling = false;
+let state = 0; // 0 - спокій, 1 - вимкнули, чекаємо тік, щоб увімкнути
 
 EventsSDK.on("PostDataUpdate", () => {
     const Me = LocalPlayer?.Hero;
@@ -37,7 +34,7 @@ EventsSDK.on("PostDataUpdate", () => {
     const now = Date.now();
 
     // ==========================================
-    // ЛОГІКА FEED (БЕЗ ЗМІН)
+    // 1. ЛОГІКА FEED (Твій ідеальний варіант)
     // ==========================================
     if (RunToRadiant.value || RunToDire.value) {
         if (now - lastTick >= 100) {
@@ -51,9 +48,9 @@ EventsSDK.on("PostDataUpdate", () => {
                 target.y += (Math.random() * 800 - 400);
                 try {
                     // @ts-ignore
-                    ExecuteOrder.HoldOrdersTarget = target;
+                    ExecuteOrder.HoldOrdersTarget = target; //
                     // @ts-ignore
-                    Me.MoveTo(target, false, true);
+                    Me.MoveTo(target, false, true); //
                 } catch (e) {
                     // @ts-ignore
                     Me.MoveTo(target);
@@ -63,52 +60,31 @@ EventsSDK.on("PostDataUpdate", () => {
     }
 
     // ==========================================
-    // ЛОГІКА ARMLET ABUSE (HARDCORE)
+    // 2. ЛОГІКА ARMLET (Максимально проста)
     // ==========================================
-    if (EnableArmlet.value || AbuseKey.isPressed) {
+    if (EnableArmlet.value && now - lastArmlet > 50) {
         const armlet = GetArmlet(Me);
-        if (armlet && armlet.CanCast && now - lastArmlet > 100) {
-            
+        if (armlet && armlet.CanCast) {
             // @ts-ignore
             const isActive = armlet.IsToggled;
-            
-            // Умова абузу: мало HP або затиснута кнопка
-            if ((Me.Health < Threshold.value && isActive) || isToggling) {
-                
-                // КРОК 1: Вимикаємо (якщо був включений)
-                if (isActive && !isToggling) {
-                    ExecuteToggle(Me, armlet);
-                    isToggling = true;
-                    lastArmlet = now;
-                } 
-                // КРОК 2: Вмикаємо назад миттєво
-                else if (!isActive && isToggling) {
-                    ExecuteToggle(Me, armlet);
-                    isToggling = false;
-                    lastArmlet = now;
-                }
+
+            // Якщо HP мало і армлет включений -> Вимикаємо
+            if (Me.Health < Threshold.value && isActive && state === 0) {
+                // @ts-ignore
+                armlet.CastNoTarget();
+                state = 1;
+                lastArmlet = now;
+            } 
+            // Якщо ми щойно вимкнули -> Вмикаємо назад
+            else if (!isActive && state === 1) {
+                // @ts-ignore
+                armlet.CastNoTarget();
+                state = 0;
+                lastArmlet = now;
             }
         }
     }
 });
-
-// Функція швидкого перемикання через движок
-function ExecuteToggle(unit: any, item: any) {
-    try {
-        // Використовуємо PrepareUnitOrders для миттєвого пакету
-        // @ts-ignore
-        unit.PrepareUnitOrders(
-            11, // DOTA_UNIT_ORDER_CAST_TOGGLE
-            0,
-            Vector3.Zero,
-            item.Index,
-            0,
-            false
-        );
-    } catch (e) {
-        item.CastNoTarget(); // Резервний метод
-    }
-}
 
 function GetArmlet(unit: Unit) {
     for (let i = 0; i <= 5; i++) {
@@ -119,4 +95,4 @@ function GetArmlet(unit: Unit) {
     return null;
 }
 
-console.log("best cheat octorine: Feed + Armlet V2 Loaded");
+console.log("best cheat octorine: Stable Loaded");
