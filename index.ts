@@ -15,20 +15,22 @@ const Sleeper = new TickSleeper();
 
 // --- МЕНЮ ---
 const UtilityEntry = Menu.AddEntry("Utility");
-const BotNode = UtilityEntry.AddNode("Smart Bot V102", "panorama/images/items/tome_of_knowledge_png.vtex_c");
+const BotNode = UtilityEntry.AddNode("Smart Bot V103", "panorama/images/items/tome_of_knowledge_png.vtex_c");
 
 const EnableBot = BotNode.AddToggle("Enable Movement", true);
 const AutoSkill = BotNode.AddToggle("Auto Skills (Spam)", true);
-const AutoQueue = BotNode.AddToggle("Auto Find (All Pick)", true);
+const AutoCast = BotNode.AddToggle("Auto Cast (Spells)", true);
+const AutoQueue = BotNode.AddToggle("Auto Find (All Pick)", true); // Автопошук
 
-// --- КООРДИНАТИ ---
+// --- КООРДИНАТИ (ТВОЇ З V99) ---
 const RAD_SPOTS = {
     BOT_XP: new Vector3(6600, -6600, 256),  
     BOT_LANE: new Vector3(6200, -5800, 256), 
     MID_XP: new Vector3(-1100, -1100, 256), 
     MID_LANE: new Vector3(-500, -500, 256),
     TOP_XP: new Vector3(-6600, 5200, 256), 
-    TOP_LANE: new Vector3(-5800, 5200, 256)
+    TOP_LANE: new Vector3(-5800, 5200, 256),
+    JUNGLE: new Vector3(1000, -4000, 256)
 };
 
 const DIRE_SPOTS = {
@@ -37,102 +39,144 @@ const DIRE_SPOTS = {
     MID_XP: new Vector3(1100, 1100, 256),
     MID_LANE: new Vector3(500, 500, 256),
     TOP_XP: new Vector3(-4800, 6600, 256), 
-    TOP_LANE: new Vector3(-5200, 6000, 256)
+    TOP_LANE: new Vector3(-5200, 6000, 256),
+    JUNGLE: new Vector3(4000, 3000, 256)
 };
 
 let lastMoveTick = 0;
-let quickbuyDone = false; // Прапор, що ми додали шмотки
+let quickbuyDone = false;
 
 EventsSDK.on("PostDataUpdate", () => {
-    // 1. АВТО-ПОШУК ТА ПРИЙНЯТТЯ (Тільки в меню)
+    // 1. АВТО-ПОШУК ТА ПРИЙНЯТТЯ (Працює в меню)
     if (AutoQueue.value) {
         if (GameState.IsMatchFound && !GameState.HasAccepted) {
             EventsSDK.ExecuteCommand("dota_accept_match");
         }
-        // Якщо ми в МЕНЮ (не в грі, не шукаємо)
+        if (GameState.IsPostGame) {
+             EventsSDK.ExecuteCommand("disconnect"); // Авто-вихід після гри
+        }
         if (!GameState.IsInGame && !GameState.IsSearching && !GameState.IsMatchFound) {
             if (!Sleeper.Sleeping("queue")) {
                 EventsSDK.ExecuteCommand("dota_match_game_modes 1"); // All Pick
                 EventsSDK.ExecuteCommand("dota_match_find_match");
                 Sleeper.Sleep(5000, "queue");
                 
-                // Скидаємо налаштування для нової гри
-                quickbuyDone = false; 
+                // Скидання для нової гри
+                quickbuyDone = false;
                 if (!EnableBot.value) EnableBot.value = true;
             }
         }
     }
 
-    // Якщо ми не в матчі - стоп
     if (!GameState.IsInGame) return;
 
     const Me = LocalPlayer?.Hero;
     if (!Me || !Me.IsAlive) return;
 
     // 2. АВТО-СТАРТ (0:00)
-    // Якщо бот вимкнений на старті - вмикаємо
     if (Me.Level < 2 && GameRules && GameRules.GameTime < 60) {
         if (!EnableBot.value) EnableBot.value = true;
     }
 
-    // 3. СТОП НА 6 РІВНІ (Щоб не банили)
+    // 3. СТОП НА 6 РІВНІ (BAN FIX)
     if (Me.Level >= 6) {
         if (EnableBot.value) {
-            EnableBot.value = false; // Вимикаємо галку
-            console.log("Level 6 reached. Bot OFF.");
-            // Можна додати disconnect тут, якщо хочеш
-            // EventsSDK.ExecuteCommand("disconnect");
+            EnableBot.value = false;
+            console.log("Level 6 reached. Bot Stopped.");
         }
         return; 
     }
 
     if (!EnableBot.value) return;
 
-    // 4. QUICKBUY (Один раз на старті)
+    // 4. QUICKBUY (Один раз додає ПТ, БФ, МОМ)
     if (!quickbuyDone) {
-        // Додаємо ПТ, БФ, МОМ у швидку покупку
         EventsSDK.ExecuteCommand("dota_shop_force_assign_quickbuy item_power_treads");
         EventsSDK.ExecuteCommand("dota_shop_item_add_to_quickbuy item_bfury");
         EventsSDK.ExecuteCommand("dota_shop_item_add_to_quickbuy item_mask_of_madness");
-        
         quickbuyDone = true;
-        console.log("Quickbuy set!");
     }
 
     // 5. ПРОКАЧКА (SPAM MODE)
-    // Качаємо що завгодно, аби не стояти АФК
-    if (AutoSkill.value && Me.AbilityPoints > 0 && !Sleeper.Sleeping("skill")) {
-        // Шукаємо будь-який доступний скіл
-        const ability = Me.Abilities.find(a => a.CanLevelUp && !a.IsHidden && a.Name !== "attribute_bonus");
-        const stats = Me.Abilities.find(a => a.CanLevelUp && a.Name === "attribute_bonus");
-        
+    if (AutoSkill.value && Me.AbilityPoints > 0 && !Sleeper.Sleeping("skill_up")) {
+        // Свен: 2 > 3 > Ульт
+        // Тайд: 3 > 2 > Ульт
+        let ability = null;
+        if (Me.UnitName === "npc_dota_hero_sven") {
+            const s2 = Me.GetAbilityByName("sven_great_cleave");
+            const s3 = Me.GetAbilityByName("sven_warcry");
+            const ult = Me.GetAbilityByName("sven_gods_strength");
+            if (ult?.CanLevelUp) ability = ult;
+            else if (s2?.CanLevelUp) ability = s2;
+            else if (s3?.CanLevelUp) ability = s3;
+        } else if (Me.UnitName === "npc_dota_hero_tidehunter") {
+            const s2 = Me.GetAbilityByName("tidehunter_kraken_shell");
+            const s3 = Me.GetAbilityByName("tidehunter_anchor_smash");
+            const ult = Me.GetAbilityByName("tidehunter_ravage");
+            if (ult?.CanLevelUp) ability = ult;
+            else if (s3?.CanLevelUp) ability = s3;
+            else if (s2?.CanLevelUp) ability = s2;
+        }
+
+        // Якщо нічого не знайшли - будь-що
+        if (!ability) ability = Me.Abilities.find(a => a.CanLevelUp && !a.IsHidden && a.Name !== "attribute_bonus");
+        if (!ability) ability = Me.Abilities.find(a => a.CanLevelUp && a.Name === "attribute_bonus");
+
         if (ability) {
             // @ts-ignore
             Me.UpgradeAbility(ability);
-        } else if (stats) {
-            // @ts-ignore
-            Me.UpgradeAbility(stats);
+            Sleeper.Sleep(1000, "skill_up");
         }
-        Sleeper.Sleep(500, "skill");
     }
 
-    // 6. РУХ (СТАБІЛЬНИЙ V99)
+    // 6. АВТО-КАСТ (Виправлено помилку синтаксису)
+    if (AutoCast.value && !Sleeper.Sleeping("cast_spell")) {
+        // ТУТ БУЛА ПОМИЛКА: пропущені || (OR)
+        const spells = Me.Abilities.filter(a => 
+            (a.Name.includes("warcry") || a.Name.includes("anchor_smash") || a.Name.includes("gods_strength") || a.Name.includes("ravage")) 
+            && a.CanBeCasted() && a.ManaCost <= Me.Mana
+        );
+
+        for (const s of spells) {
+            // @ts-ignore
+            Me.CastNoTarget(s);
+            Sleeper.Sleep(2000, "cast_spell");
+            break;
+        }
+    }
+
+    // 7. ДВИЖЕНИЕ (ТВІЙ ОРИГІНАЛ V99)
     const now = Date.now();
     if (now - lastMoveTick >= 3000) {
         lastMoveTick = now;
         const isRadiant = LocalPlayer.Team === 2;
         const spots = isRadiant ? RAD_SPOTS : DIRE_SPOTS;
         
-        // Цикл ліній: 1-2(Bot), 3-4(Mid), 5-6(Top)
-        const cycle = Math.floor((Me.Level - 1) / 2) % 3;
-        
-        // ХОВАЄМОСЯ ТІЛЬКИ НА 1 РІВНІ (Щоб не злили ФБ і дали досвід)
-        const isHide = (Me.Level === 1); 
-
         let target: Vector3;
-        if (cycle === 0) target = isHide ? spots.BOT_XP.Clone() : spots.BOT_LANE.Clone(); // Bot
-        else if (cycle === 1) target = isHide ? spots.MID_XP.Clone() : spots.MID_LANE.Clone(); // Mid
-        else target = isHide ? spots.TOP_XP.Clone() : spots.TOP_LANE.Clone(); // Top
+
+        // 10 Смертей = Ліс
+        // @ts-ignore
+        if (Me.Deaths >= 10) {
+            target = spots.JUNGLE.Clone();
+            target.x += (Math.random() * 1000 - 500);
+            target.y += (Math.random() * 1000 - 500);
+            try { 
+                // @ts-ignore
+                Me.MoveTo(target); 
+            } catch (e) {}
+            return;
+        }
+
+        const cycle = Math.floor((Me.Level - 1) / 2) % 3;
+        const isHideLevel = (Me.Level % 2 !== 0); // 1, 3, 5 = Ховаємось
+
+        if (cycle === 0) { // BOT
+            target = isHideLevel ? spots.BOT_XP.Clone() : spots.BOT_LANE.Clone();
+        } else if (cycle === 1) { // MID
+            target = isHideLevel ? spots.MID_XP.Clone() : spots.MID_LANE.Clone();
+        } else { // TOP
+            target = isHideLevel ? spots.TOP_XP.Clone() : spots.TOP_LANE.Clone();
+        }
 
         target.x += (Math.random() * 200 - 100);
         target.y += (Math.random() * 200 - 100);
@@ -140,13 +184,10 @@ EventsSDK.on("PostDataUpdate", () => {
         try {
             // @ts-ignore
             ExecuteOrder.HoldOrdersTarget = target;
-            
-            if (!isHide) {
-                // АГРЕСІЯ (Рівні 2, 3, 4, 5) - йдемо бити кріпів
+            if (!isHideLevel) {
                 // @ts-ignore
                 Me.Attack(target); 
             } else {
-                // КУЩІ (Рівень 1) - йдемо ховатися
                 // @ts-ignore
                 Me.MoveTo(target, false, true); 
             }
