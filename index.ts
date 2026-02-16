@@ -8,8 +8,7 @@ import {
     TickSleeper,
     GameState,
     EntityManager,
-    Ability,
-    GameRules
+    Ability
 } from "github.com/octarine-public/wrapper/index"
 
 const Sleeper = new TickSleeper();
@@ -20,10 +19,10 @@ Menu.Localization.AddLocalizationUnit("english", new Map([
     ["run_radiant", "1. Feed RADIANT (Down)"],
     ["run_dire", "2. Feed DIRE (Up)"],
     ["fast_feed", "3. Fast Feed (Blinks & Skills)"],
-    ["boost_node", "Smart Bot (The Working One)"],
+    ["boost_node", "Smart Bot (Standard Move)"],
     ["enable_smart", "Enable Smart Farm"],
     ["auto_accept", "Auto Accept Match"],
-    ["auto_queue", "Auto Find Match (Press Button)"],
+    ["auto_queue", "Auto Find (Press Button)"],
     ["auto_items", "Auto Buy (PT -> BF -> MoM)"],
     ["auto_skill", "Auto Level Up Skills"]
 ]));
@@ -33,7 +32,7 @@ Menu.Localization.AddLocalizationUnit("russian", new Map([
     ["run_radiant", "1. Фид RADIANT (Вниз)"],
     ["run_dire", "2. Фид DIRE (Вверх)"],
     ["fast_feed", "3. Быстрый фид (Блинки и Скиллы)"],
-    ["boost_node", "Смарт Бот (Рабочий)"],
+    ["boost_node", "Смарт Бот (Обычный бег)"],
     ["enable_smart", "Включить Умный Фарм"],
     ["auto_accept", "Авто-принятие игры"],
     ["auto_queue", "Авто-Поиск (Жмет кнопку)"],
@@ -44,14 +43,14 @@ Menu.Localization.AddLocalizationUnit("russian", new Map([
 // --- МЕНЮ ---
 const UtilityEntry = Menu.AddEntry("Utility");
 
-// 1. BAD GUY (ФИДЕР - ТОТ САМЫЙ)
+// 1. BAD GUY (ФИДЕР)
 const BadGuyNode = UtilityEntry.AddNode("Bad Guy", "panorama/images/items/shadow_amulet_png.vtex_c");
 const FeedNode = BadGuyNode.AddNode("feed_node", "panorama/images/spellicons/skeleton_king_reincarnation_png.vtex_c");
 const RunToRadiant = FeedNode.AddToggle("run_radiant", false);
 const RunToDire = FeedNode.AddToggle("run_dire", false);
 const FastFeed = FeedNode.AddToggle("fast_feed", true);
 
-// 2. SMART BOOSTER (БОТ - ПО ТВОЕМУ КОДУ)
+// 2. SMART BOOSTER (БОТ)
 const BoostNode = UtilityEntry.AddNode("boost_node", "panorama/images/items/tome_of_knowledge_png.vtex_c");
 const EnableSmart = BoostNode.AddToggle("enable_smart", false);
 const AutoAccept = BoostNode.AddToggle("auto_accept", true);
@@ -64,13 +63,13 @@ const BASE_RADIANT = new Vector3(-7200, -6600, 384);
 const BASE_DIRE = new Vector3(7200, 6500, 384);
 
 // --- КООРДИНАТЫ ЛИНИЙ (БОТ - ДЕРЕВЬЯ) ---
-// Radiant Safe(Bot) / Mid / Hard(Top) / Jungle
+// Radiant
 const RAD_BOT_TREE = new Vector3(6200, -6200, 256); 
 const RAD_MID_TREE = new Vector3(-650, -350, 256);
 const RAD_TOP_TREE = new Vector3(-6200, 5500, 256);
 const RAD_JUNGLE = new Vector3(1000, -4000, 256);
 
-// Dire Hard(Bot) / Mid / Safe(Top) / Jungle
+// Dire
 const DIRE_BOT_TREE = new Vector3(6200, -5500, 256);
 const DIRE_MID_TREE = new Vector3(650, 350, 256);
 const DIRE_TOP_TREE = new Vector3(-4500, 5800, 256);
@@ -86,12 +85,12 @@ EventsSDK.on("PostDataUpdate", () => {
         return;
     }
 
-    // 2. АВТО-ПОИСК (ПРОСТО ЖМЕМ КНОПКУ, ЕСЛИ НЕ В ИГРЕ)
+    // 2. АВТО-ПОИСК
     if (EnableSmart.value && AutoQueue.value) {
         if (!GameState.IsInGame && !GameState.IsSearching && !GameState.IsMatchFound) {
             if (!Sleeper.Sleeping("queue_spam")) {
                 EventsSDK.ExecuteCommand("dota_match_find_match");
-                Sleeper.Sleep(5000, "queue_spam"); // Жмем раз в 5 сек
+                Sleeper.Sleep(5000, "queue_spam");
             }
         }
     }
@@ -100,7 +99,7 @@ EventsSDK.on("PostDataUpdate", () => {
     if (!Me || !Me.IsAlive) return;
 
     // ==========================================
-    // ЛОГИКА 1: ФИДЕР (LEGENDARY)
+    // ЛОГИКА 1: ФИДЕР (BYPASS MODE - СКВОЗЬ СТЕНЫ)
     // ==========================================
     if (RunToRadiant.value || RunToDire.value) {
         let target = RunToRadiant.value ? BASE_RADIANT.Clone() : BASE_DIRE.Clone();
@@ -108,16 +107,9 @@ EventsSDK.on("PostDataUpdate", () => {
         if (FastFeed.value && !Sleeper.Sleeping("blink") && Me.Distance(target) > 800) {
             const blinkSkill = Me.GetAbilityByName("antimage_blink") || 
                                Me.GetAbilityByName("queenofpain_blink") || 
-                               Me.GetAbilityByName("faceless_void_time_walk") ||
-                               Me.GetAbilityByName("void_spirit_astral_step");
-
-            const blinkItem = Me.GetItemByName("item_blink") || 
-                              Me.GetItemByName("item_overwhelming_blink") || 
-                              Me.GetItemByName("item_swift_blink") || 
-                              Me.GetItemByName("item_arcane_blink");
-
-            const activeBlink = (blinkSkill && blinkSkill.CanBeCasted()) ? blinkSkill : 
-                                (blinkItem && blinkItem.CanBeCasted()) ? blinkItem : null;
+                               Me.GetAbilityByName("faceless_void_time_walk");
+            const blinkItem = Me.GetItemByName("item_blink");
+            const activeBlink = (blinkSkill && blinkSkill.CanBeCasted()) ? blinkSkill : (blinkItem && blinkItem.CanBeCasted()) ? blinkItem : null;
 
             if (activeBlink) {
                 // @ts-ignore
@@ -134,7 +126,7 @@ EventsSDK.on("PostDataUpdate", () => {
                 // @ts-ignore
                 ExecuteOrder.HoldOrdersTarget = target;
                 // @ts-ignore
-                Me.MoveTo(target, false, true);
+                Me.MoveTo(target, false, true); // TRUE = Bypass (для фида)
             } catch (e) {
                 // @ts-ignore
                 Me.MoveTo(target);
@@ -144,10 +136,10 @@ EventsSDK.on("PostDataUpdate", () => {
     }
 
     // ==========================================
-    // ЛОГИКА 2: УМНЫЙ ФАРМ (BOT)
+    // ЛОГИКА 2: УМНЫЙ БОТ (STANDARD MODE - ОБЫЧНЫЙ БЕГ)
     // ==========================================
     if (EnableSmart.value) {
-        // АВТО-СКИЛЛЫ (РАНДОМ)
+        // АВТО-СКИЛЛЫ
         if (AutoSkill.value && Me.AbilityPoints > 0 && !Sleeper.Sleeping("skill")) {
             const abilities = Me.Abilities.filter(a => a.CanLevelUp);
             if (abilities.length > 0) {
@@ -174,8 +166,8 @@ EventsSDK.on("PostDataUpdate", () => {
             }
         }
 
-        // ДВИЖЕНИЕ (ВОЗВРАТ К РАБОЧЕЙ ЛОГИКЕ)
-        if (Date.now() - lastMove >= 1000) { // Интервал 1 секунда
+        // ДВИЖЕНИЕ (СТАНДАРТНОЕ, ЧТОБЫ ОБХОДИТЬ СТЕНЫ)
+        if (Date.now() - lastMove >= 1000) {
             lastMove = Date.now();
             const isRadiant = LocalPlayer.Team === 2;
             
@@ -188,41 +180,33 @@ EventsSDK.on("PostDataUpdate", () => {
                 return;
             }
 
-            // 2. ЦИКЛ ЛИНИЙ (ТВОЯ СХЕМА)
+            // 2. ЦИКЛ ЛИНИЙ
             let target = new Vector3(0,0,0);
 
             if (Me.Level < 2) { 
-                // 1 Уровень -> НИЗ
                 target = isRadiant ? RAD_BOT_TREE.Clone() : DIRE_BOT_TREE.Clone();
             } else if (Me.Level >= 2 && Me.Level < 6) { 
-                // 2-5 Уровень -> МИД
                 target = isRadiant ? RAD_MID_TREE.Clone() : DIRE_MID_TREE.Clone();
             } else if (Me.Level >= 6 && Me.Level < 10) { 
-                // 6-9 Уровень -> ВЕРХ
                 target = isRadiant ? RAD_TOP_TREE.Clone() : DIRE_TOP_TREE.Clone();
             } else { 
-                // 10+ Уровень -> ЛЕС
                 target = isRadiant ? RAD_JUNGLE.Clone() : DIRE_JUNGLE.Clone();
-                // В лесу рандом больше
                 target.x += (Math.random() * 1000 - 500);
                 target.y += (Math.random() * 1000 - 500);
             }
 
-            // Рандом в точке (чтобы не кикнуло)
+            // Рандом
             if (Me.Level < 10) {
                 target.x += (Math.random() * 300 - 150);
                 target.y += (Math.random() * 300 - 150);
             }
 
+            // ВАЖНО: ТУТ ОБЫЧНЫЙ MoveTo БЕЗ BYPASS
             try {
-                // ТА ЖЕ МАГИЯ ДВИЖЕНИЯ, ЧТО И В КОДЕ, КОТОРЫЙ ТЫ СКИНУЛ
                 // @ts-ignore
-                ExecuteOrder.HoldOrdersTarget = target;
-                // @ts-ignore
-                Me.MoveTo(target, false, true);
+                Me.MoveTo(target); // Просто идти
             } catch (e) {
-                // @ts-ignore
-                Me.MoveTo(target);
+                console.log("Move Error");
             }
         }
     }
