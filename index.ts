@@ -15,14 +15,11 @@ const Sleeper = new TickSleeper();
 
 // --- МЕНЮ ---
 const UtilityEntry = Menu.AddEntry("Utility");
-const BotNode = UtilityEntry.AddNode("Smart Bot V101", "panorama/images/items/tome_of_knowledge_png.vtex_c");
+const BotNode = UtilityEntry.AddNode("Smart Bot V102", "panorama/images/items/tome_of_knowledge_png.vtex_c");
 
-// ГОЛОВНИЙ ПЕРЕМИКАЧ - ВИМКНИ ЙОГО, КОЛИ ГРАЄШ САМ!
-const MasterSwitch = BotNode.AddToggle("MASTER SWITCH (Я БОТ)", true);
-
-const EnableBot = BotNode.AddToggle("Logic State", true); // Стан логіки (вмикається сам)
-const AutoSkill = BotNode.AddToggle("Force Level Up", true);
-const AutoQueue = BotNode.AddToggle("Auto Queue & Disconnect", true);
+const EnableBot = BotNode.AddToggle("Enable Movement", true);
+const AutoSkill = BotNode.AddToggle("Auto Skills (Spam)", true);
+const AutoQueue = BotNode.AddToggle("Auto Find (All Pick)", true);
 
 // --- КООРДИНАТИ ---
 const RAD_SPOTS = {
@@ -44,136 +41,112 @@ const DIRE_SPOTS = {
 };
 
 let lastMoveTick = 0;
-let quickbuyAdded = false;
+let quickbuyDone = false; // Прапор, що ми додали шмотки
 
 EventsSDK.on("PostDataUpdate", () => {
-    // 0. ЯКЩО МАЙСТЕР-СВІТЧ ВИМКНЕНИЙ - МОВЧИМО (Для звичайних ігор)
-    if (!MasterSwitch.value) return;
-
-    // 1. АВТО-ПОШУК ТА ДИСКОНЕКТ
+    // 1. АВТО-ПОШУК ТА ПРИЙНЯТТЯ (Тільки в меню)
     if (AutoQueue.value) {
-        // Якщо гра закінчилася (Трон впав або Пост-гейм)
-        if (GameState.IsPostGame) {
-            EventsSDK.ExecuteCommand("disconnect"); // Вихід в меню
-            return;
-        }
-        
-        // Приймаємо гру
         if (GameState.IsMatchFound && !GameState.HasAccepted) {
             EventsSDK.ExecuteCommand("dota_accept_match");
         }
-
-        // Шукаємо гру (All Pick)
+        // Якщо ми в МЕНЮ (не в грі, не шукаємо)
         if (!GameState.IsInGame && !GameState.IsSearching && !GameState.IsMatchFound) {
             if (!Sleeper.Sleeping("queue")) {
-                // ID 1 = All Pick, ID 3 = Random Draft і т.д.
-                // Ставимо All Pick Ranked/Unranked
-                EventsSDK.ExecuteCommand("dota_match_game_modes 1"); 
+                EventsSDK.ExecuteCommand("dota_match_game_modes 1"); // All Pick
                 EventsSDK.ExecuteCommand("dota_match_find_match");
                 Sleeper.Sleep(5000, "queue");
-                // Скидаємо прапори для нової гри
-                quickbuyAdded = false; 
+                
+                // Скидаємо налаштування для нової гри
+                quickbuyDone = false; 
                 if (!EnableBot.value) EnableBot.value = true;
             }
         }
     }
 
-    // Якщо ми не в матчі - виходимо
+    // Якщо ми не в матчі - стоп
     if (!GameState.IsInGame) return;
 
     const Me = LocalPlayer?.Hero;
     if (!Me || !Me.IsAlive) return;
 
-    // ==========================================
     // 2. АВТО-СТАРТ (0:00)
-    // ==========================================
-    // Вмикаємо бота примусово на старті, тільки якщо MasterSwitch увімкнений
+    // Якщо бот вимкнений на старті - вмикаємо
     if (Me.Level < 2 && GameRules && GameRules.GameTime < 60) {
         if (!EnableBot.value) EnableBot.value = true;
     }
 
-    // ==========================================
     // 3. СТОП НА 6 РІВНІ (Щоб не банили)
-    // ==========================================
     if (Me.Level >= 6) {
         if (EnableBot.value) {
-            EnableBot.value = false; // Вимикаємо логіку
-            console.log("Level 6 reached. Bot Stopped.");
+            EnableBot.value = false; // Вимикаємо галку
+            console.log("Level 6 reached. Bot OFF.");
+            // Можна додати disconnect тут, якщо хочеш
+            // EventsSDK.ExecuteCommand("disconnect");
         }
-        return; // Повний стоп
+        return; 
     }
 
     if (!EnableBot.value) return;
 
-    // ==========================================
-    // 4. QUICKBUY (Додаємо в чергу)
-    // ==========================================
-    // Додаємо ПТ, БФ, МОМ у швидку покупку один раз на старті
-    if (!quickbuyAdded && GameRules.GameTime > 0) {
-        // Очистити квікбай (опціонально) і додати предмети
-        // Команди додавання в квікбай:
-        EventsSDK.ExecuteCommand("dota_shop_force_assign_quickbuy item_power_treads"); // PT
-        EventsSDK.ExecuteCommand("dota_shop_item_add_to_quickbuy item_bfury"); // BF
-        EventsSDK.ExecuteCommand("dota_shop_item_add_to_quickbuy item_mask_of_madness"); // MOM
+    // 4. QUICKBUY (Один раз на старті)
+    if (!quickbuyDone) {
+        // Додаємо ПТ, БФ, МОМ у швидку покупку
+        EventsSDK.ExecuteCommand("dota_shop_force_assign_quickbuy item_power_treads");
+        EventsSDK.ExecuteCommand("dota_shop_item_add_to_quickbuy item_bfury");
+        EventsSDK.ExecuteCommand("dota_shop_item_add_to_quickbuy item_mask_of_madness");
         
-        quickbuyAdded = true;
-        console.log("Items added to Quickbuy");
+        quickbuyDone = true;
+        console.log("Quickbuy set!");
     }
 
-    // ==========================================
-    // 5. ПРОКАЧКА (FORCE MODE)
-    // ==========================================
+    // 5. ПРОКАЧКА (SPAM MODE)
+    // Качаємо що завгодно, аби не стояти АФК
     if (AutoSkill.value && Me.AbilityPoints > 0 && !Sleeper.Sleeping("skill")) {
-        // Шукаємо БУДЬ-ЯКИЙ скіл, який можна вкачати
-        const ability = Me.Abilities.find(a => a.CanLevelUp && !a.IsHidden);
+        // Шукаємо будь-який доступний скіл
+        const ability = Me.Abilities.find(a => a.CanLevelUp && !a.IsHidden && a.Name !== "attribute_bonus");
+        const stats = Me.Abilities.find(a => a.CanLevelUp && a.Name === "attribute_bonus");
         
         if (ability) {
             // @ts-ignore
             Me.UpgradeAbility(ability);
-            Sleeper.Sleep(200, "skill"); // Дуже швидко (0.2 сек), щоб точно вкачав
+        } else if (stats) {
+            // @ts-ignore
+            Me.UpgradeAbility(stats);
         }
+        Sleeper.Sleep(500, "skill");
     }
 
-    // ==========================================
-    // 6. РУХ (1 ЛВЛ = КУЩІ, ІНШІ = ЛАЙН)
-    // ==========================================
-    // Щоб не отримати бан за XP, ми сидимо в кущах ТІЛЬКИ на 1 рівні.
-    // З 2 по 5 рівень ми завжди на лінії.
-    
+    // 6. РУХ (СТАБІЛЬНИЙ V99)
     const now = Date.now();
     if (now - lastMoveTick >= 3000) {
         lastMoveTick = now;
         const isRadiant = LocalPlayer.Team === 2;
         const spots = isRadiant ? RAD_SPOTS : DIRE_SPOTS;
         
-        // Цикл ліній (зміна кожні 2 рівні)
+        // Цикл ліній: 1-2(Bot), 3-4(Mid), 5-6(Top)
         const cycle = Math.floor((Me.Level - 1) / 2) % 3;
         
-        // ХОВАЄМОСЯ ТІЛЬКИ НА 1 РІВНІ! (Щоб не було бану)
-        // На 3 і 5 рівні теж йдемо бити, бо інакше не дадуть XP
+        // ХОВАЄМОСЯ ТІЛЬКИ НА 1 РІВНІ (Щоб не злили ФБ і дали досвід)
         const isHide = (Me.Level === 1); 
 
         let target: Vector3;
-        
-        if (cycle === 0) target = isHide ? spots.BOT_XP.Clone() : spots.BOT_LANE.Clone(); // Низ
-        else if (cycle === 1) target = isHide ? spots.MID_XP.Clone() : spots.MID_LANE.Clone(); // Мід
-        else target = isHide ? spots.TOP_XP.Clone() : spots.TOP_LANE.Clone(); // Верх
+        if (cycle === 0) target = isHide ? spots.BOT_XP.Clone() : spots.BOT_LANE.Clone(); // Bot
+        else if (cycle === 1) target = isHide ? spots.MID_XP.Clone() : spots.MID_LANE.Clone(); // Mid
+        else target = isHide ? spots.TOP_XP.Clone() : spots.TOP_LANE.Clone(); // Top
 
-        // Рандом
-        target.x += (Math.random() * 300 - 150);
-        target.y += (Math.random() * 300 - 150);
+        target.x += (Math.random() * 200 - 100);
+        target.y += (Math.random() * 200 - 100);
 
         try {
             // @ts-ignore
             ExecuteOrder.HoldOrdersTarget = target;
             
             if (!isHide) {
-                // РЕЖИМ АГРЕСІЇ (рівні 2, 3, 4, 5)
-                // Атакуємо землю, щоб бити кріпів і отримувати XP
+                // АГРЕСІЯ (Рівні 2, 3, 4, 5) - йдемо бити кріпів
                 // @ts-ignore
                 Me.Attack(target); 
             } else {
-                // РЕЖИМ КУЩІВ (рівень 1)
+                // КУЩІ (Рівень 1) - йдемо ховатися
                 // @ts-ignore
                 Me.MoveTo(target, false, true); 
             }
