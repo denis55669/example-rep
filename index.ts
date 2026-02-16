@@ -15,11 +15,11 @@ const Sleeper = new TickSleeper();
 
 // --- ЛОКАЛИЗАЦИЯ ---
 Menu.Localization.AddLocalizationUnit("english", new Map([
-    ["feed_node", "Feed (Working Original)"],
+    ["feed_node", "Feed (Original V53)"],
     ["run_radiant", "1. Feed RADIANT"],
     ["run_dire", "2. Feed DIRE"],
     ["fast_feed", "3. Fast Feed"],
-    ["boost_node", "Smart Bot (Feed Engine Clone)"],
+    ["boost_node", "Smart Bot (Hybrid Move)"],
     ["enable_smart", "Enable Smart Farm"],
     ["auto_accept", "Auto Accept Match"],
     ["auto_queue", "Auto Find (Button Press)"],
@@ -28,11 +28,11 @@ Menu.Localization.AddLocalizationUnit("english", new Map([
 ]));
 
 Menu.Localization.AddLocalizationUnit("russian", new Map([
-    ["feed_node", "Фид (Рабочий Оригинал)"],
+    ["feed_node", "Фид (Оригинал V53)"],
     ["run_radiant", "1. Фид RADIANT"],
     ["run_dire", "2. Фид DIRE"],
     ["fast_feed", "3. Быстрый фид"],
-    ["boost_node", "Смарт Бот (Клон Фида)"],
+    ["boost_node", "Смарт Бот (Гибрид)"],
     ["enable_smart", "Включить Умный Фарм"],
     ["auto_accept", "Авто-принятие игры"],
     ["auto_queue", "Авто-Поиск (Жмет кнопку)"],
@@ -43,7 +43,7 @@ Menu.Localization.AddLocalizationUnit("russian", new Map([
 // --- МЕНЮ ---
 const UtilityEntry = Menu.AddEntry("Utility");
 
-// 1. BAD GUY (ТВОЙ РАБОЧИЙ КОД)
+// 1. BAD GUY (ТВОЙ РАБОЧИЙ КОД 100%)
 const BadGuyNode = UtilityEntry.AddNode("Bad Guy", "panorama/images/items/shadow_amulet_png.vtex_c");
 const FeedNode = BadGuyNode.AddNode("feed_node", "panorama/images/spellicons/skeleton_king_reincarnation_png.vtex_c");
 const RunToRadiant = FeedNode.AddToggle("run_radiant", false);
@@ -62,20 +62,21 @@ const AutoSkill = BoostNode.AddToggle("auto_skill", true);
 const BASE_RADIANT = new Vector3(-7200, -6600, 384);
 const BASE_DIRE = new Vector3(7200, 6500, 384);
 
-// --- КООРДИНАТЫ ДЛЯ БОТА ---
+// --- КООРДИНАТЫ ДЛЯ БОТА (ИСПРАВЛЕННЫЕ - НА ЗЕМЛЕ) ---
 // Radiant
-const RAD_BOT = new Vector3(6200, -6200, 256); 
-const RAD_MID = new Vector3(-600, -600, 256);
-const RAD_TOP = new Vector3(-6000, 5800, 256);
+const RAD_BOT = new Vector3(5800, -5800, 256); // Safe Lane (Ground)
+const RAD_MID = new Vector3(-500, -500, 256);  // Mid (Ground)
+const RAD_TOP = new Vector3(-5800, 5800, 256); // Hard (Ground)
 const RAD_JUNGLE = new Vector3(1000, -4000, 256);
+
 // Dire
-const DIRE_BOT = new Vector3(6000, -5800, 256);
-const DIRE_MID = new Vector3(600, 600, 256);
-const DIRE_TOP = new Vector3(-4500, 6000, 256);
+const DIRE_BOT = new Vector3(5800, -5800, 256); // Hard (Ground)
+const DIRE_MID = new Vector3(500, 500, 256);    // Mid (Ground)
+const DIRE_TOP = new Vector3(-5800, 5800, 256); // Safe (Ground)
 const DIRE_JUNGLE = new Vector3(4000, 3000, 256);
 
-let lastTick = 0; // Для Фида
-let lastBotTick = 0; // Для Бота
+let lastTick = 0; 
+let lastBotTick = 0;
 
 EventsSDK.on("PostDataUpdate", () => {
     // 1. АВТО-ПРИНЯТИЕ
@@ -83,6 +84,7 @@ EventsSDK.on("PostDataUpdate", () => {
         EventsSDK.ExecuteCommand("dota_accept_match");
         return;
     }
+
     // 2. АВТО-ПОИСК
     if (EnableSmart.value && AutoQueue.value) {
         if (!GameState.IsInGame && !GameState.IsSearching && !GameState.IsMatchFound) {
@@ -103,14 +105,14 @@ EventsSDK.on("PostDataUpdate", () => {
     if (RunToRadiant.value || RunToDire.value) {
         let target = RunToRadiant.value ? BASE_RADIANT.Clone() : BASE_DIRE.Clone();
 
-        if (FastFeed.value && !Sleeper.Sleeping("blink") && Me.Distance(target) > 800) {
+        if (FastFeed.value && !Sleeper.Sleeping && Me.Distance(target) > 800) {
             const blinkSkill = Me.GetAbilityByName("antimage_blink") || Me.GetAbilityByName("queenofpain_blink") || Me.GetAbilityByName("faceless_void_time_walk");
             const blinkItem = Me.GetItemByName("item_blink");
             const activeBlink = (blinkSkill && blinkSkill.CanBeCasted()) ? blinkSkill : (blinkItem && blinkItem.CanBeCasted()) ? blinkItem : null;
             if (activeBlink) {
                 // @ts-ignore
                 Me.CastPosition(activeBlink, Me.Position.Extend(target, 1150));
-                Sleeper.Sleep(400, "blink"); 
+                Sleeper.Sleep(400); 
             }
         }
 
@@ -132,7 +134,7 @@ EventsSDK.on("PostDataUpdate", () => {
     }
 
     // ==========================================
-    // ЛОГИКА 2: СМАРТ БОТ (КОПИЯ ДВИЖКА ФИДЕРА)
+    // ЛОГИКА 2: СМАРТ БОТ (ГИБРИД)
     // ==========================================
     if (EnableSmart.value) {
         // Скиллы
@@ -161,8 +163,8 @@ EventsSDK.on("PostDataUpdate", () => {
             }
         }
 
-        // ДВИЖЕНИЕ (ТОЧНАЯ КОПИЯ ФИДЕРА: 100мс + HoldOrdersTarget + Bypass)
-        if (now - lastBotTick >= 100) { 
+        // ДВИЖЕНИЕ
+        if (now - lastBotTick >= 500) { 
             lastBotTick = now;
             const isRadiant = LocalPlayer.Team === 2;
             
@@ -171,9 +173,7 @@ EventsSDK.on("PostDataUpdate", () => {
             // @ts-ignore
             if (ancient && ancient.HealthPercent < 100) {
                 // @ts-ignore
-                ExecuteOrder.HoldOrdersTarget = ancient.Position;
-                // @ts-ignore
-                Me.MoveTo(ancient.Position, false, true);
+                Me.MoveTo(ancient.Position);
                 return;
             }
 
@@ -191,16 +191,24 @@ EventsSDK.on("PostDataUpdate", () => {
                 target.y += (Math.random() * 1000 - 500);
             }
 
-            // РАНДОМ (ОБЯЗАТЕЛЬНО ДЛЯ ЭТОГО ДВИЖКА)
-            target.x += (Math.random() * 400 - 200);
-            target.y += (Math.random() * 400 - 200);
+            // Рандом
+            target.x += (Math.random() * 300 - 150);
+            target.y += (Math.random() * 300 - 150);
 
+            // 3. ГИБРИДНЫЙ РЕЖИМ
+            const dist = Me.Distance(target);
             try {
-                // ИСПОЛЬЗУЕМ МЕТОД ФИДЕРА
-                // @ts-ignore
-                ExecuteOrder.HoldOrdersTarget = target;
-                // @ts-ignore
-                Me.MoveTo(target, false, true); // BYPASS ВКЛЮЧЕН
+                if (dist > 1500) {
+                    // ЕСЛИ ДАЛЕКО (НА БАЗЕ) -> ОБЫЧНЫЙ БЕГ (ЧТОБЫ ВЫЙТИ)
+                    // @ts-ignore
+                    Me.MoveTo(target);
+                } else {
+                    // ЕСЛИ БЛИЗКО (НА ЛАЙНЕ) -> РЕЖИМ ФИДЕРА (ЧТОБЫ СТОЯТЬ ЖЕСТКО)
+                    // @ts-ignore
+                    ExecuteOrder.HoldOrdersTarget = target;
+                    // @ts-ignore
+                    Me.MoveTo(target, false, true);
+                }
             } catch (e) {
                 // @ts-ignore
                 Me.MoveTo(target);
