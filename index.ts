@@ -21,7 +21,7 @@ Menu.Localization.AddLocalizationUnit("english", new Map([
     ["fast_feed", "3. Fast Feed (Blinks & Skills)"],
     ["boost_node", "Smart Hour Booster"],
     ["enable_smart", "Enable Smart XP Farm"],
-    ["auto_queue", "Auto Queue (All Pick RU)"],
+    ["auto_queue", "Force Auto-Queue (RU)"],
     ["auto_pt", "Auto Buy Power Treads"],
     ["auto_skill", "Auto Level Up Skills"]
 ]));
@@ -33,7 +33,7 @@ Menu.Localization.AddLocalizationUnit("russian", new Map([
     ["fast_feed", "3. Быстрый фид (Блинки и Скиллы)"],
     ["boost_node", "Умный Буст Часов"],
     ["enable_smart", "Включить Умный Фарм (XP)"],
-    ["auto_queue", "Авто-Поиск (All Pick RU)"],
+    ["auto_queue", "Форс Поиск (RU)"],
     ["auto_pt", "Авто-покупка ПТ"],
     ["auto_skill", "Авто-прокачка скиллов"]
 ]));
@@ -70,13 +70,13 @@ EventsSDK.on("PostDataUpdate", () => {
     const Me = LocalPlayer?.Hero;
     const now = Date.now();
 
-    // ФИКС АВТОПОИСКА
     if (EnableSmart.value && !GameState.IsInGame && !GameState.IsSearching && AutoQueue.value) {
         if (!Sleeper.Sleeping("queue")) {
-            EventsSDK.ExecuteCommand("dota_match_game_modes 2"); 
+            EventsSDK.ExecuteCommand("dota_match_find_match_cancel"); 
+            EventsSDK.ExecuteCommand("dota_match_game_modes 1"); 
             EventsSDK.ExecuteCommand("dota_select_region 15"); 
             EventsSDK.ExecuteCommand("dota_match_find_match");
-            Sleeper.Sleep(5000, "queue");
+            Sleeper.Sleep(15000, "queue");
         }
     }
 
@@ -86,16 +86,13 @@ EventsSDK.on("PostDataUpdate", () => {
         if (AutoSkill.value && Me.AbilityPoints > 0 && !Sleeper.Sleeping("skill")) {
             const abilities = Me.Abilities.filter(a => a.CanLevelUp);
             if (abilities.length > 0) {
-                const randomAbility = abilities[Math.floor(Math.random() * abilities.length)];
                 // @ts-ignore
-                Me.UpgradeAbility(randomAbility);
+                Me.UpgradeAbility(abilities[Math.floor(Math.random() * abilities.length)]);
                 Sleeper.Sleep(1000, "skill");
             }
         }
-
         if (AutoPT.value && !Sleeper.Sleeping("buy_pt")) {
-            const pt = Me.GetItemByName("item_power_treads");
-            if (!pt) {
+            if (!Me.GetItemByName("item_power_treads")) {
                 // @ts-ignore
                 Me.PurchaseItem("item_power_treads");
                 Sleeper.Sleep(5000, "buy_pt");
@@ -145,23 +142,8 @@ EventsSDK.on("PostDataUpdate", () => {
         }
 
         const cycle = Math.floor((Me.Level - 1) / 2) % 3;
-        let target = new Vector3(0, 0, 0);
+        let target = (cycle === 0) ? (isRadiant ? RAD_BOT.Clone() : DIRE_BOT.Clone()) : 
+                     (cycle === 1) ? (isRadiant ? RAD_MID.Clone() : DIRE_MID.Clone()) : 
+                                    (isRadiant ? RAD_TOP.Clone() : DIRE_TOP.Clone());
 
-        if (cycle === 0) target = isRadiant ? RAD_BOT.Clone() : DIRE_BOT.Clone();
-        else if (cycle === 1) target = isRadiant ? RAD_MID.Clone() : DIRE_MID.Clone();
-        else target = isRadiant ? RAD_TOP.Clone() : DIRE_TOP.Clone();
-
-        target.x += (Math.random() * 300 - 150);
-        target.y += (Math.random() * 300 - 150);
-
-        try {
-            // @ts-ignore
-            ExecuteOrder.HoldOrdersTarget = target;
-            // @ts-ignore
-            Me.MoveTo(target, false, true);
-        } catch (e) {
-            // @ts-ignore
-            Me.MoveTo(target);
-        }
-    }
-});
+        target.x += (
