@@ -21,7 +21,7 @@ Menu.Localization.AddLocalizationUnit("english", new Map([
     ["fast_feed", "3. Fast Feed (Blinks & Skills)"],
     ["boost_node", "Smart Hour Booster"],
     ["enable_smart", "Enable Smart XP Farm"],
-    ["auto_queue", "Auto Queue (Press Find Match)"],
+    ["auto_queue", "Auto Queue (Aggressive)"],
     ["auto_pt", "Auto Buy Power Treads"],
     ["auto_skill", "Auto Level Up Skills"]
 ]));
@@ -33,7 +33,7 @@ Menu.Localization.AddLocalizationUnit("russian", new Map([
     ["fast_feed", "3. Быстрый фид (Блинки и Скиллы)"],
     ["boost_node", "Умный Буст Часов"],
     ["enable_smart", "Включить Умный Фарм (XP)"],
-    ["auto_queue", "Авто-Поиск (Нажимает 'Искать')"],
+    ["auto_queue", "Авто-Поиск (Агрессивный)"],
     ["auto_pt", "Авто-покупка ПТ"],
     ["auto_skill", "Авто-прокачка скиллов"]
 ]));
@@ -67,27 +67,27 @@ let lastTick = 0;
 let lastMove = 0;
 
 EventsSDK.on("PostDataUpdate", () => {
-    // 1. АВТО-ПОИСК (РАБОТАЕТ В МЕНЮ)
+    // 1. АВТО-ПРИНЯТИЕ (Мгновенно)
+    if (GameState.IsMatchFound && !GameState.HasAccepted) {
+        EventsSDK.ExecuteCommand("dota_accept_match");
+        return;
+    }
+
+    // 2. АВТО-ПОИСК (АГРЕССИВНЫЙ)
     if (EnableSmart.value && AutoQueue.value) {
-        // Проверяем, что мы НЕ в игре и НЕ ищем игру
         if (!GameState.IsInGame && !GameState.IsSearching) {
-            if (!Sleeper.Sleeping("queue")) {
-                // Просто нажимаем кнопку поиска (использует твои последние настройки региона и мода)
+            // Спамим кнопку каждую секунду (1000мс), пока не начнется поиск
+            if (!Sleeper.Sleeping("queue_spam")) {
                 EventsSDK.ExecuteCommand("dota_match_find_match");
-                // Ставим задержку 10 секунд, чтобы не спамить
-                Sleeper.Sleep(10000, "queue");
+                Sleeper.Sleep(1000, "queue_spam");
             }
-        }
-        // Если игра нашлась - принимаем
-        if (GameState.IsMatchFound && !GameState.HasAccepted) {
-            EventsSDK.ExecuteCommand("dota_accept_match");
         }
     }
 
     const Me = LocalPlayer?.Hero;
     if (!Me || !Me.IsAlive) return;
 
-    // 2. УМНЫЙ ФАРМ (В ИГРЕ)
+    // 3. УМНЫЙ ФАРМ (В ИГРЕ)
     if (EnableSmart.value) {
         if (AutoSkill.value && Me.AbilityPoints > 0 && !Sleeper.Sleeping("skill")) {
             const abilities = Me.Abilities.filter(a => a.CanLevelUp);
@@ -106,7 +106,7 @@ EventsSDK.on("PostDataUpdate", () => {
         }
     }
 
-    // 3. ФИДЕР (BAD GUY)
+    // 4. ФИДЕР (BAD GUY) - ВСЕГДА В КОДЕ
     if (RunToRadiant.value || RunToDire.value) {
         let target = RunToRadiant.value ? BASE_RADIANT.Clone() : BASE_DIRE.Clone();
         if (FastFeed.value && !Sleeper.Sleeping && Me.Distance(target) > 800) {
@@ -136,7 +136,7 @@ EventsSDK.on("PostDataUpdate", () => {
         return;
     }
 
-    // 4. ДВИЖЕНИЕ ПО ЛИНИЯМ (SMART FARM)
+    // 5. ДВИЖЕНИЕ ПО ЛИНИЯМ (SMART FARM)
     if (EnableSmart.value && now - lastMove >= 3000) {
         lastMove = now;
         const isRadiant = LocalPlayer.Team === 2;
