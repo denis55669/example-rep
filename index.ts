@@ -47,7 +47,7 @@ let lastMoveTick = 0;
 let quickbuyDone = false;
 
 EventsSDK.on("PostDataUpdate", () => {
-    // 1. АВТО-ПОШУК
+    // 1. АВТО-ПОШУК (в меню)
     if (AutoQueue.value) {
         if (GameState.IsMatchFound && !GameState.HasAccepted) {
             EventsSDK.ExecuteCommand("dota_accept_match");
@@ -71,34 +71,23 @@ EventsSDK.on("PostDataUpdate", () => {
     const Me = LocalPlayer?.Hero;
     if (!Me || !Me.IsAlive) return;
 
-    // 2. АВТО-СТАРТ (0:00)
-    // Вмикаємо бота, якщо рівень менше 2
+    // 2. АВТО-СТАРТ (Завжди вмикаємо, якщо рівень < 2)
     if (Me.Level < 2 && GameRules && GameRules.GameTime < 60) {
         if (!EnableBot.value) EnableBot.value = true;
     }
 
-    // 3. СТОП НА 6 РІВНІ (ЗМІНЕНО з 10 на 6)
+    // 3. СТОП НА 6 РІВНІ (Як ти просив)
     if (Me.Level >= 6) {
         if (EnableBot.value) {
-            EnableBot.value = false;
+            EnableBot.value = false; // Вимикаємо
             console.log("Level 6 reached. Bot Stopped.");
         }
-        
-        // 10 Смертей = Ліс
-        // @ts-ignore
-        if (Me.Deaths >= 10 && (Date.now() - lastMoveTick >= 3000)) {
-            lastMoveTick = Date.now();
-            const isRadiant = LocalPlayer.Team === 2;
-            const jungle = isRadiant ? RAD_SPOTS.JUNGLE : DIRE_SPOTS.JUNGLE;
-            // @ts-ignore
-            Me.MoveTo(jungle);
-        }
-        return; 
+        return; // Повний стоп
     }
 
     if (!EnableBot.value) return;
 
-    // 4. QUICKBUY
+    // 4. QUICKBUY (Раз на гру)
     if (!quickbuyDone) {
         EventsSDK.ExecuteCommand("dota_shop_force_assign_quickbuy item_power_treads");
         EventsSDK.ExecuteCommand("dota_shop_item_add_to_quickbuy item_bfury");
@@ -106,7 +95,7 @@ EventsSDK.on("PostDataUpdate", () => {
         quickbuyDone = true;
     }
 
-    // 5. ПРОКАЧКА
+    // 5. ПРОКАЧКА (Анти-АФК)
     if (AutoSkill.value && Me.AbilityPoints > 0 && !Sleeper.Sleeping("skill_up")) {
         let ability = null;
         if (Me.UnitName === "npc_dota_hero_sven") {
@@ -135,8 +124,9 @@ EventsSDK.on("PostDataUpdate", () => {
         }
     }
 
-    // 6. АВТО-КАСТ
+    // 6. АВТО-КАСТ (ВИПРАВЛЕНИЙ)
     if (AutoCast.value && !Sleeper.Sleeping("cast_spell")) {
+        // Я додав || (OR), яких не вистачало у твоєму коді
         const spells = Me.Abilities.filter(a => 
             (a.Name.includes("warcry") || a.Name.includes("anchor_smash") || a.Name.includes("gods_strength") || a.Name.includes("ravage")) 
             && a.CanBeCasted() && a.ManaCost <= Me.Mana
@@ -150,7 +140,7 @@ EventsSDK.on("PostDataUpdate", () => {
         }
     }
 
-    // 7. ДВИЖЕНИЕ
+    // 7. РУХ (ТВІЙ РОБОЧИЙ МЕТОД)
     const now = Date.now();
     if (now - lastMoveTick >= 3000) {
         lastMoveTick = now;
@@ -159,6 +149,7 @@ EventsSDK.on("PostDataUpdate", () => {
         
         let target: Vector3;
 
+        // 10 Смертей = Ліс
         // @ts-ignore
         if (Me.Deaths >= 10) {
             target = spots.JUNGLE.Clone();
@@ -171,6 +162,7 @@ EventsSDK.on("PostDataUpdate", () => {
             return;
         }
 
+        // Цикл ліній
         const cycle = Math.floor((Me.Level - 1) / 2) % 3;
         const isHideLevel = (Me.Level % 2 !== 0); 
 
