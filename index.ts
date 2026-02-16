@@ -8,155 +8,127 @@ import {
     TickSleeper,
     GameState,
     EntityManager,
-    Ability,
-    GameRules
+    Ability
 } from "github.com/octarine-public/wrapper/index"
 
 const Sleeper = new TickSleeper();
 
-// --- ЛОКАЛИЗАЦИЯ ---
-Menu.Localization.AddLocalizationUnit("russian", new Map([
-    ["boost_node", "SMART BOT V88"],
-    ["enable_smart", "Включить Ультра-Фарм"],
-    ["auto_accept", "Авто-Принятие"],
-    ["auto_queue", "Авто-Поиск (RU/AP)"],
-    ["auto_items", "Закуп: ПТ -> БФ -> МОМ"],
-    ["auto_skill", "Прокачка скиллов"]
-]));
-
 // --- МЕНЮ ---
 const UtilityEntry = Menu.AddEntry("Utility");
-const BoostNode = UtilityEntry.AddNode("boost_node", "panorama/images/items/tome_of_knowledge_png.vtex_c");
 
-const EnableBot = BoostNode.AddToggle("enable_smart", false);
-const AutoAccept = BoostNode.AddToggle("auto_accept", true);
-const AutoQueue = BoostNode.AddToggle("auto_queue", true);
-const AutoItems = BoostNode.AddToggle("auto_items", true);
-const AutoSkill = BoostNode.AddToggle("auto_skill", true);
+// МОДУЛЬ 1: ФИДЕР (ВСЕГДА В КОДЕ)
+const BadGuyNode = UtilityEntry.AddNode("Bad Guy", "panorama/images/items/shadow_amulet_png.vtex_c");
+const FeedNode = BadGuyNode.AddNode("Feed", "panorama/images/spellicons/skeleton_king_reincarnation_png.vtex_c");
+const RunToRadiant = FeedNode.AddToggle("Feed RADIANT", false);
+const RunToDire = FeedNode.AddToggle("Feed DIRE", false);
 
-// --- КОРРЕКТНЫЕ КООРДИНАТЫ (Глубоко в деревьях) ---
-const RAD_SPOTS = {
-    BOT_XP: new Vector3(6400, -6500, 256), // Глубоко в лесу снизу
-    MID_XP: new Vector3(-1200, -800, 256), // В деревьях за мидом
-    TOP_XP: new Vector3(-6500, 5000, 256), // В лесу сверху
-    JUNGLE: new Vector3(1000, -4000, 256)
-};
+// МОДУЛЬ 2: СМАРТ БОТ
+const BoostNode = UtilityEntry.AddNode("Smart Bot", "panorama/images/items/tome_of_knowledge_png.vtex_c");
+const EnableBot = BoostNode.AddToggle("Enable Movement", false);
+const AutoItems = BoostNode.AddToggle("Auto Buy (PT-BF-MOM)", true);
+const AutoSkill = BoostNode.AddToggle("Auto Level Skills", true);
 
-const DIRE_SPOTS = {
-    BOT_XP: new Vector3(6500, -5000, 256),
-    MID_XP: new Vector3(1200, 800, 256),
-    TOP_XP: new Vector3(-5000, 6400, 256),
-    JUNGLE: new Vector3(4000, 3000, 256)
-};
+// --- КООРДИНАТЫ ---
+const BASE_RADIANT = new Vector3(-7200, -6600, 384);
+const BASE_DIRE = new Vector3(7200, 6500, 384);
+
+const RAD_SPOTS = [
+    new Vector3(6400, -6300, 256), // BOT Trees
+    new Vector3(-800, -600, 256),  // MID Trees
+    new Vector3(-6300, 5500, 256), // TOP Trees
+    new Vector3(1000, -4000, 256)  // JUNGLE
+];
+
+const DIRE_SPOTS = [
+    new Vector3(6400, -5200, 256), // BOT Trees
+    new Vector3(800, 600, 256),    // MID Trees
+    new Vector3(-5500, 6300, 256), // TOP Trees
+    new Vector3(4000, 3000, 256)   // JUNGLE
+];
 
 let lastMoveTick = 0;
+let lastFeedTick = 0;
 
 EventsSDK.on("PostDataUpdate", () => {
-    // 1. АВТО-ПРИНЯТИЕ И ПОИСК
-    if (AutoAccept.value && GameState.IsMatchFound && !GameState.HasAccepted) {
-        EventsSDK.ExecuteCommand("dota_accept_match");
-    }
-    if (EnableBot.value && AutoQueue.value && !GameState.IsInGame && !GameState.IsSearching) {
-        if (!Sleeper.Sleeping("queue")) {
-            EventsSDK.ExecuteCommand("dota_match_game_modes 1");
-            EventsSDK.ExecuteCommand("dota_match_find_match");
-            Sleeper.Sleep(7000, "queue");
-        }
-    }
-
-    if (!EnableBot.value) return;
     const Me = LocalPlayer?.Hero;
     if (!Me || !Me.IsAlive) return;
     const now = Date.now();
 
-    // 2. АВТО-СКИЛЛЫ И ЗАКУП
-    if (AutoSkill.value && Me.AbilityPoints > 0 && !Sleeper.Sleeping("skill")) {
-        const abilities = Me.Abilities.filter(a => a.CanLevelUp);
-        if (abilities.length > 0) {
+    // ==========================================
+    // 1. ЛОГИКА ФИДЕРА (ТВОЙ ОРИГИНАЛ)
+    // ==========================================
+    if (RunToRadiant.value || RunToDire.value) {
+        let target = RunToRadiant.value ? BASE_RADIANT.Clone() : BASE_DIRE.Clone();
+        if (now - lastFeedTick >= 100) {
+            lastFeedTick = now;
+            target.x += (Math.random() * 800 - 400);
+            target.y += (Math.random() * 800 - 400);
             // @ts-ignore
-            Me.UpgradeAbility(abilities[Math.floor(Math.random() * abilities.length)]);
-            Sleeper.Sleep(1000, "skill");
+            ExecuteOrder.HoldOrdersTarget = target;
+            // @ts-ignore
+            Me.MoveTo(target, false, true);
         }
+        return; 
     }
-    if (AutoItems.value && !Sleeper.Sleeping("buy")) {
-        const items = ["item_power_treads", "item_bfury", "item_mask_of_madness"];
-        for (const i of items) {
-            if (!Me.GetItemByName(i)) {
+
+    // ==========================================
+    // 2. ЛОГИКА БОТА (ДВИЖОК V87)
+    // ==========================================
+    if (EnableBot.value) {
+        // Авто-скиллы и закуп
+        if (AutoSkill.value && Me.AbilityPoints > 0 && !Sleeper.Sleeping("skill")) {
+            const abilities = Me.Abilities.filter(a => a.CanLevelUp);
+            if (abilities.length > 0) {
                 // @ts-ignore
-                Me.PurchaseItem(i);
-                Sleeper.Sleep(5000, "buy");
-                break;
+                Me.UpgradeAbility(abilities[Math.floor(Math.random() * abilities.length)]);
+                Sleeper.Sleep(1000, "skill");
             }
         }
-    }
-
-    // 3. ЛОГИКА ДВИЖЕНИЯ (УЛЬТРА ЦИКЛ)
-    if (now - lastMoveTick >= 2000) {
-        lastMoveTick = now;
-        const isRadiant = LocalPlayer.Team === 2;
-        const spots = isRadiant ? RAD_SPOTS : DIRE_SPOTS;
-        
-        // Приоритет: Деф трона
-        const ancient = EntityManager.GetEntitiesByClass("npc_dota_fortress").find(e => e.IsMyTeam);
-        // @ts-ignore
-        if (ancient && ancient.HealthPercent < 100) {
-            // @ts-ignore
-            Me.MoveTo(ancient.Position);
-            return;
+        if (AutoItems.value && !Sleeper.Sleeping("buy")) {
+            const i = !Me.GetItemByName("item_power_treads") ? "item_power_treads" : !Me.GetItemByName("item_bfury") ? "item_bfury" : !Me.GetItemByName("item_mask_of_madness") ? "item_mask_of_madness" : null;
+            if (i) { 
+                // @ts-ignore
+                Me.PurchaseItem(i); Sleeper.Sleep(5000, "buy"); 
+            }
         }
 
-        let target: Vector3;
-        // Режим: Непарный лвл = ПРЯТАТЬСЯ, Парный лвл = ТОЛКАТЬ (кроме 1 лвла)
-        const isHidingMode = (Me.Level % 2 !== 0); 
-
-        // Выбор линии
-        if (Me.Level < 2) target = spots.BOT_XP.Clone();
-        else if (Me.Level < 6) target = spots.MID_XP.Clone();
-        else if (Me.Level < 10) target = spots.TOP_XP.Clone();
-        else {
-            // ЛЕС (10+ лвл)
-            target = spots.JUNGLE.Clone();
-            target.x += (Math.random() * 1500 - 750);
-            target.y += (Math.random() * 1500 - 750);
-            // @ts-ignore
-            Me.MoveTo(target);
-            return;
-        }
-
-        if (!isHidingMode) {
-            // РЕЖИМ АГРЕССИИ (Парные уровни): Выходим из деревьев в центр линии
-            // Сдвигаем таргет к центру карты
-            target.x = target.x * 0.7; 
-            target.y = target.y * 0.7;
+        // ДВИЖЕНИЕ (РАБОЧИЙ МЕТОД V87)
+        if (now - lastMoveTick >= 3000) {
+            lastMoveTick = now;
+            const isRadiant = LocalPlayer.Team === 2;
+            const spots = isRadiant ? RAD_SPOTS : DIRE_SPOTS;
             
-            // Пытаемся найти ближайшего крипа для атаки
-            const enemyCreep = EntityManager.GetEntitiesByClass("npc_dota_creature").find(e => e.IsEnemy && e.IsAlive && e.Distance(Me) < 1000);
-            if (enemyCreep) {
-                // @ts-ignore
-                Me.Attack(enemyCreep);
-                return;
+            let target: Vector3;
+            if (Me.Level < 2) target = spots[0].Clone();
+            else if (Me.Level < 6) target = spots[1].Clone();
+            else if (Me.Level < 10) target = spots[2].Clone();
+            else target = spots[3].Clone();
+
+            // ЛОГИКА «ВЫХОДА» ИЗ ДЕРЕВЬЕВ
+            const isPushing = (Me.Level % 2 === 0); // Парные уровни (2, 4, 6, 8) - идем бить
+            if (isPushing && Me.Level < 10) {
+                target.x = target.x * 0.8; // Сдвигаем ближе к линии
+                target.y = target.y * 0.8;
             }
-        }
 
-        // Рандом в точке
-        target.x += (Math.random() * 200 - 100);
-        target.y += (Math.random() * 200 - 100);
+            target.x += (Math.random() * 400 - 200);
+            target.y += (Math.random() * 400 - 200);
 
-        // ИСПОЛЬЗУЕМ ДВИЖОК ОТ V87
-        const dist = Me.Distance(target);
-        try {
-            if (dist > 1800) {
+            const dist = Me.Distance(target);
+            try {
+                if (dist > 1500) {
+                    // @ts-ignore
+                    Me.MoveTo(target); // Обычный выход с базы
+                } else {
+                    // @ts-ignore
+                    ExecuteOrder.HoldOrdersTarget = target;
+                    // @ts-ignore
+                    Me.MoveTo(target, false, true); // Bypass для кустов
+                }
+            } catch (e) {
                 // @ts-ignore
                 Me.MoveTo(target);
-            } else {
-                // @ts-ignore
-                ExecuteOrder.HoldOrdersTarget = target;
-                // @ts-ignore
-                Me.MoveTo(target, false, true); // Bypass для кустов
             }
-        } catch (e) {
-            // @ts-ignore
-            Me.MoveTo(target);
         }
     }
 });
