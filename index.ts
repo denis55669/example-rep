@@ -14,13 +14,13 @@ const Sleeper = new TickSleeper();
 
 // --- МЕНЮ ---
 const UtilityEntry = Menu.AddEntry("Utility");
-const BotNode = UtilityEntry.AddNode("Smart Bot V107", "panorama/images/items/tome_of_knowledge_png.vtex_c");
+const BotNode = UtilityEntry.AddNode("Smart Bot V109", "panorama/images/items/tome_of_knowledge_png.vtex_c");
 
 const EnableBot = BotNode.AddToggle("Enable Movement", true);
 const AutoSkill = BotNode.AddToggle("Auto Level Skills (Sven 2nd)", true);
 const AutoItems = BotNode.AddToggle("Auto Buy Items", true);
 
-// --- КООРДИНАТЫ ---
+// --- КООРДИНАТИ ---
 const RAD_SPOTS = {
     BOT_XP: new Vector3(6600, -6600, 256),  
     BOT_LANE: new Vector3(6200, -5800, 256), 
@@ -45,6 +45,7 @@ let lastMoveTick = 0;
 
 EventsSDK.on("PostDataUpdate", () => {
     // 0. АВТО-ВЫХОД (DISCONNECT)
+    // Працює, коли гра закінчилась
     if (GameState.IsPostGame) {
         if (!Sleeper.Sleeping("disconnect")) {
             EventsSDK.ExecuteCommand("disconnect");
@@ -56,23 +57,18 @@ EventsSDK.on("PostDataUpdate", () => {
     const Me = LocalPlayer?.Hero;
     if (!Me || !Me.IsAlive) return;
 
-    // ==========================================
-    // НОВОЕ: ЦЕНТРИРОВАНИЕ КАМЕРЫ
-    // ==========================================
+    // ЦЕНТРУВАННЯ КАМЕРИ (Щоб не збивалася)
     if (EnableBot.value) {
-        // Эта команда центрирует камеру на герое
         EventsSDK.ExecuteCommand("dota_camera_center");
     }
 
-    // 1. ВЫКЛЮЧЕНИЕ НА 6 УРОВНЕ
+    // 1. ВИМИКАННЯ НА 6 РІВНІ
     if (Me.Level >= 6) {
-        if (EnableBot.value) {
-            EnableBot.value = false; 
-        }
+        if (EnableBot.value) EnableBot.value = false;
         return; 
     }
 
-    // 2. ВКЛЮЧЕНИЕ С НАЧАЛА (< 6)
+    // 2. ВКЛЮЧЕННЯ НА СТАРТІ (< 6)
     if (Me.Level < 6 && !EnableBot.value) {
         EnableBot.value = true;
     }
@@ -80,7 +76,7 @@ EventsSDK.on("PostDataUpdate", () => {
     if (!EnableBot.value) return;
     const now = Date.now();
 
-    // 3. ПРОКАЧКА
+    // 3. ПРОКАЧКА (2-й скіл пріоритет)
     if (AutoSkill.value && Me.AbilityPoints > 0 && !Sleeper.Sleeping("skill_up")) {
         const cleave = Me.GetAbilityByName("sven_great_cleave");
         const hammer = Me.GetAbilityByName("sven_storm_bolt");
@@ -92,7 +88,7 @@ EventsSDK.on("PostDataUpdate", () => {
         }
     }
 
-    // 4. ЗАКУП
+    // 4. ЗАКУП (PT -> BF -> MOM)
     if (AutoItems.value && !Sleeper.Sleeping("buy_logic")) {
         const items = ["item_power_treads", "item_bfury", "item_mask_of_madness"];
         for (const itemName of items) {
@@ -105,37 +101,36 @@ EventsSDK.on("PostDataUpdate", () => {
         }
     }
 
-    // 5. ДВИЖЕНИЕ
+    // 5. РУХ
     if (now - lastMoveTick >= 3000) {
         lastMoveTick = now;
         const isRadiant = LocalPlayer.Team === 2;
         const spots = isRadiant ? RAD_SPOTS : DIRE_SPOTS;
         
         let target: Vector3;
-        const isHideLevel = (Me.Level % 2 !== 0); 
+        const isHideLevel = (Me.Level % 2 !== 0); // 1, 3, 5 - Ховаємось
 
+        // Схема ліній: 1-2(Bot), 3-4(Mid), 5(Top)
         if (Me.Level < 2) {
             target = isHideLevel ? spots.BOT_XP.Clone() : spots.BOT_LANE.Clone();
-        } else if (Me.Level < 6) {
+        } else if (Me.Level < 4) { // Змінив на 4, щоб швидше змінював лінії
             target = isHideLevel ? spots.MID_XP.Clone() : spots.MID_LANE.Clone();
-        } else if (Me.Level < 10) {
-            target = isHideLevel ? spots.TOP_XP.Clone() : spots.TOP_LANE.Clone();
         } else {
-            target = spots.JUNGLE.Clone();
-            target.x += (Math.random() * 1000 - 500);
-            target.y += (Math.random() * 1000 - 500);
+            target = isHideLevel ? spots.TOP_XP.Clone() : spots.TOP_LANE.Clone();
         }
 
         target.x += (Math.random() * 200 - 100);
         target.y += (Math.random() * 200 - 100);
 
         try {
-            if (!isHideLevel && Me.Level < 10) {
+            if (!isHideLevel) {
+                // АТАКА (Парні рівні)
                 // @ts-ignore
                 ExecuteOrder.HoldOrdersTarget = target;
                 // @ts-ignore
                 Me.Attack(target); 
             } else {
+                // ХОВАНКИ (Непарні рівні)
                 // @ts-ignore
                 ExecuteOrder.HoldOrdersTarget = target;
                 // @ts-ignore
