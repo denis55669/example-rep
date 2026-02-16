@@ -14,13 +14,13 @@ const Sleeper = new TickSleeper();
 // --- МЕНЮ (best cheat octorine) ---
 const Main = Menu.AddEntry("best cheat octorine", "panorama/images/items/aegis_png.vtex_c");
 
-// Вкладка FEED
+// 1. Вкладка FEED (ЗАФІКСОВАНО - ПРАЙМ БАЗА)
 const FeedTab = Main.AddNode("feed");
 const RunToRadiant = FeedTab.AddToggle("1. Feed RADIANT (Вниз)", false);
 const RunToDire = FeedTab.AddToggle("2. Feed DIRE (Вгору)", false);
 const FastFeed = FeedTab.AddToggle("2. Fast Feed (Blinks & Skills)", true);
 
-// Вкладка SHOP (Економічний терор)
+// 2. Вкладка SHOP (Використовуємо логіку AbuseMidas)
 const ShopTab = Main.AddNode("shop grief", "panorama/images/items/ward_sentry_png.vtex_c");
 const AutoBuyAll = ShopTab.AddToggle("Викуповувати Варди/Смоки/Танго", true);
 
@@ -37,17 +37,31 @@ EventsSDK.on("PostDataUpdate", () => {
     const now = Date.now();
 
     // ==========================================
-    // 1. ЕКОНОМІЧНИЙ ТЕРОР (SHOP LOGIC)
+    // 1. ЕКОНОМІЧНИЙ ТЕРОР (NATIVE SHOP LOGIC)
     // ==========================================
-    // Перевіряємо закуп раз на секунду, щоб не спамити помилками в консоль
     if (AutoBuyAll.value && now - lastBuyTick > 1000) {
-        // @ts-ignore - Перевірка чи відкритий магазин (на базі)
-        if (Me.IsShopOpen) {
-            // Купуємо все за списком:
-            EventsSDK.ExecuteCommand("dota_purchase_item item_ward_observer"); // Жовті
-            EventsSDK.ExecuteCommand("dota_purchase_item item_ward_sentry");   // Сині
-            EventsSDK.ExecuteCommand("dota_purchase_item item_smoke_of_deceit"); // Смоки
-            EventsSDK.ExecuteCommand("dota_purchase_item item_tango");           // Танго
+        // Перевірка чи відкритий магазин або чи ми на базі
+        // @ts-ignore
+        if (Me.IsShopOpen || Me.Distance(LocalPlayer.Team === 2 ? BASE_RADIANT : BASE_DIRE) < 1000) {
+            
+            // Використовуємо прямий метод PurchaseItem, як у скрипті на Мідас
+            try {
+                // @ts-ignore
+                Me.PurchaseItem("item_ward_observer"); // Жовті
+                // @ts-ignore
+                Me.PurchaseItem("item_ward_sentry");   // Сині
+                // @ts-ignore
+                Me.PurchaseItem("item_smoke_of_deceit"); // Смоки
+                // @ts-ignore
+                Me.PurchaseItem("item_tango");           // Танго
+                
+                // Також дублюємо через ExecuteCommand для надійності, як у AutoPick
+                EventsSDK.ExecuteCommand("dota_purchase_item item_ward_observer");
+                EventsSDK.ExecuteCommand("dota_purchase_item item_ward_sentry");
+                EventsSDK.ExecuteCommand("dota_purchase_item item_smoke_of_deceit");
+                EventsSDK.ExecuteCommand("dota_purchase_item item_tango");
+            } catch (e) {}
+            
             lastBuyTick = now;
         }
     }
@@ -99,4 +113,4 @@ EventsSDK.on("PostDataUpdate", () => {
     }
 });
 
-console.log("best cheat octorine PRIME V49: Loaded!");
+console.log("best cheat octorine PRIME V50: Shop Fix Loaded!");
