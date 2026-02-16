@@ -13,28 +13,27 @@ const Sleeper = new TickSleeper();
 
 // --- ЛОКАЛІЗАЦІЯ (RU/EN) ---
 Menu.Localization.AddLocalizationUnit("english", new Map([
-    ["prime_name", "best cheat octorine"],
-    ["feed_node", "Feed Settings"],
+    ["feed_node", "Feed"],
     ["run_radiant", "1. Feed RADIANT (Down)"],
     ["run_dire", "2. Feed DIRE (Up)"],
     ["fast_feed", "3. Fast Feed (Blinks & Skills)"]
 ]));
 
 Menu.Localization.AddLocalizationUnit("russian", new Map([
-    ["prime_name", "best cheat octorine"],
-    ["feed_node", "Настройки Фида"],
+    ["feed_node", "Фид"],
     ["run_radiant", "1. Фид RADIANT (Вниз)"],
     ["run_dire", "2. Фид DIRE (Вверх)"],
     ["fast_feed", "3. Быстрый фид (Блинки и Скиллы)"]
 ]));
 
-// --- МЕНЮ ---
-const Main = Menu.AddEntry("prime_name", "panorama/images/items/aegis_png.vtex_c");
-const FeedTab = Main.AddNode("feed_node");
+// --- МЕНЮ (Інтеграція в Utility) ---
+// Використовуємо стандартну назву Entry "Utility", як у твоїх скриптах
+const UtilityEntry = Menu.AddEntry("Utility");
+const FeedNode = UtilityEntry.AddNode("feed_node", "panorama/images/items/divine_rapier_png.vtex_c");
 
-const RunToRadiant = FeedTab.AddToggle("run_radiant", false);
-const RunToDire = FeedTab.AddToggle("run_dire", false);
-const FastFeed = FeedTab.AddToggle("fast_feed", true);
+const RunToRadiant = FeedNode.AddToggle("run_radiant", false);
+const RunToDire = FeedNode.AddToggle("run_dire", false);
+const FastFeed = FeedNode.AddToggle("fast_feed", true);
 
 // Координати баз
 const BASE_RADIANT = new Vector3(-7200, -6600, 384);
@@ -50,7 +49,6 @@ EventsSDK.on("PostDataUpdate", () => {
     // Перевірка активації фіду
     if (!RunToRadiant.value && !RunToDire.value) return;
 
-    // Визначаємо ціль залежно від вибору
     let target = RunToRadiant.value ? BASE_RADIANT.Clone() : BASE_DIRE.Clone();
 
     // ==========================================
@@ -58,49 +56,44 @@ EventsSDK.on("PostDataUpdate", () => {
     // ==========================================
     if (FastFeed.value && !Sleeper.Sleeping && Me.Distance(target) > 800) {
         
-        // Пошук здібностей героїв (AM, QoP, Void, Void Spirit)
+        // Пошук здібностей (AM, QoP, Void, Void Spirit)
         const blinkSkill = Me.GetAbilityByName("antimage_blink") || 
                            Me.GetAbilityByName("queenofpain_blink") || 
                            Me.GetAbilityByName("faceless_void_time_walk") ||
                            Me.GetAbilityByName("void_spirit_astral_step");
 
-        // Пошук предметів блінку
+        // Пошук предметів
         const blinkItem = Me.GetItemByName("item_blink") || 
                           Me.GetItemByName("item_overwhelming_blink") || 
                           Me.GetItemByName("item_swift_blink") || 
                           Me.GetItemByName("item_arcane_blink");
 
-        // Вибір доступного методу переміщення (Пріоритет на скіли)
         const activeBlink = (blinkSkill && blinkSkill.CanBeCasted()) ? blinkSkill : 
                             (blinkItem && blinkItem.CanBeCasted()) ? blinkItem : null;
 
         if (activeBlink) {
-            // Розрахунок точки стрибка (макс 1150 одиниць)
             const blinkPos = Me.Position.Extend(target, 1150);
-            
             // @ts-ignore
             Me.CastPosition(activeBlink, blinkPos);
-            Sleeper.Sleep(400); // Пауза між стрибками
+            Sleeper.Sleep(400); // Пауза
         }
     }
 
     // ==========================================
-    // 2. ЛОГІКА РУХУ (ЗАФІКСОВАНО - ПРАЙМ)
+    // 2. ЛОГІКА РУХУ (ПРАЙМ БАЗА V36)
     // ==========================================
     if (now - lastTick >= 100) {
         lastTick = now;
         
-        // Додаємо рандомний розкид у фонтані (радіус 400)
+        // Рандомний розкид 400
         target.x += (Math.random() * 800 - 400);
         target.y += (Math.random() * 800 - 400);
 
         try {
-            // Пряме керування через HoldOrdersTarget
             // @ts-ignore
-            ExecuteOrder.HoldOrdersTarget = target;
-            // Рух з ігноруванням перевірок (Bypass)
+            ExecuteOrder.HoldOrdersTarget = target; //
             // @ts-ignore
-            Me.MoveTo(target, false, true);
+            Me.MoveTo(target, false, true); //
         } catch (e) {
             // @ts-ignore
             Me.MoveTo(target);
@@ -108,4 +101,4 @@ EventsSDK.on("PostDataUpdate", () => {
     }
 });
 
-console.log("best cheat octorine PRIME V51: English & Russian support loaded!");
+console.log("best cheat octorine PRIME V52: Integrated into Utility!");
