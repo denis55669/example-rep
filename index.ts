@@ -13,7 +13,6 @@ const Sleeper = new TickSleeper();
 
 // --- ЛОКАЛІЗАЦІЯ (RU/EN) ---
 Menu.Localization.AddLocalizationUnit("english", new Map([
-    ["bad_guy_name", "Bad Guy"],
     ["feed_node", "Feed"],
     ["run_radiant", "1. Feed RADIANT (Down)"],
     ["run_dire", "2. Feed DIRE (Up)"],
@@ -21,18 +20,21 @@ Menu.Localization.AddLocalizationUnit("english", new Map([
 ]));
 
 Menu.Localization.AddLocalizationUnit("russian", new Map([
-    ["bad_guy_name", "Плохой парень"],
     ["feed_node", "Фид"],
     ["run_radiant", "1. Фид RADIANT (Вниз)"],
     ["run_dire", "2. Фид DIRE (Вверх)"],
     ["fast_feed", "3. Быстрый фид (Блинки и Скиллы)"]
 ]));
 
-// --- МЕНЮ (Переїзд у Bad Guy) ---
-// Створюємо окрему категорію Bad Guy
-const BadGuyEntry = Menu.AddEntry("bad_guy_name", "panorama/images/items/shadow_amulet_png.vtex_c");
-// Вузол фіду з іконкою скелета
-const FeedNode = BadGuyEntry.AddNode("feed_node", "panorama/images/spellicons/skeleton_king_reincarnation_png.vtex_c");
+// --- МЕНЮ (Інтеграція в Utility -> Bad Guy) ---
+// 1. Отримуємо доступ до головної вкладки Utility
+const UtilityEntry = Menu.AddEntry("Utility");
+
+// 2. Створюємо/підключаємося до вузла Bad Guy всередині Utility
+const BadGuyNode = UtilityEntry.AddNode("Bad Guy", "panorama/images/items/shadow_amulet_png.vtex_c");
+
+// 3. Додаємо наш вузол Feed з іконкою скелета в Bad Guy
+const FeedNode = BadGuyNode.AddNode("feed_node", "panorama/images/spellicons/skeleton_king_reincarnation_png.vtex_c");
 
 const RunToRadiant = FeedNode.AddToggle("run_radiant", false);
 const RunToDire = FeedNode.AddToggle("run_dire", false);
@@ -93,6 +95,7 @@ EventsSDK.on("PostDataUpdate", () => {
         target.y += (Math.random() * 800 - 400);
 
         try {
+            // Пряме керування через HoldOrdersTarget
             // @ts-ignore
             ExecuteOrder.HoldOrdersTarget = target;
             // Рух з байпасом перевірок
@@ -105,4 +108,4 @@ EventsSDK.on("PostDataUpdate", () => {
     }
 });
 
-console.log("best cheat octorine: V54 Bad Guy Edition Loaded!");
+console.log("best cheat octorine: Prime V55 (Utility -> Bad Guy -> Feed) Loaded!");
