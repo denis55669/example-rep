@@ -70,12 +70,13 @@ EventsSDK.on("PostDataUpdate", () => {
     const Me = LocalPlayer?.Hero;
     const now = Date.now();
 
-    if (EnableSmart.value && !GameState.IsInGame && AutoQueue.value) {
+    // ФИКС АВТОПОИСКА
+    if (EnableSmart.value && !GameState.IsInGame && !GameState.IsSearching && AutoQueue.value) {
         if (!Sleeper.Sleeping("queue")) {
-            EventsSDK.ExecuteCommand("dota_match_game_modes 1");
-            EventsSDK.ExecuteCommand("dota_select_region 15");
+            EventsSDK.ExecuteCommand("dota_match_game_modes 2"); 
+            EventsSDK.ExecuteCommand("dota_select_region 15"); 
             EventsSDK.ExecuteCommand("dota_match_find_match");
-            Sleeper.Sleep(10000, "queue");
+            Sleeper.Sleep(5000, "queue");
         }
     }
 
