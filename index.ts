@@ -8,32 +8,35 @@ import {
     TickSleeper,
     GameState,
     EntityManager,
-    Ability
+    Ability,
+    GameRules
 } from "github.com/octarine-public/wrapper/index"
 
 const Sleeper = new TickSleeper();
 
 // --- ЛОКАЛІЗАЦІЯ ---
 Menu.Localization.AddLocalizationUnit("english", new Map([
-    ["feed_node", "Feed (Do Not Touch)"],
+    ["feed_node", "Feed (Bad Guy)"],
     ["run_radiant", "1. Feed RADIANT (Down)"],
     ["run_dire", "2. Feed DIRE (Up)"],
     ["fast_feed", "3. Fast Feed (Blinks & Skills)"],
-    ["boost_node", "Smart Bot (Fixed)"],
+    ["boost_node", "Smart Bot (The Working One)"],
     ["enable_smart", "Enable Smart Farm"],
     ["auto_accept", "Auto Accept Match"],
+    ["auto_queue", "Auto Find Match (Press Button)"],
     ["auto_items", "Auto Buy (PT -> BF -> MoM)"],
     ["auto_skill", "Auto Level Up Skills"]
 ]));
 
 Menu.Localization.AddLocalizationUnit("russian", new Map([
-    ["feed_node", "Фид (Не трогать)"],
+    ["feed_node", "Фид (Bad Guy)"],
     ["run_radiant", "1. Фид RADIANT (Вниз)"],
     ["run_dire", "2. Фид DIRE (Вверх)"],
     ["fast_feed", "3. Быстрый фид (Блинки и Скиллы)"],
-    ["boost_node", "Смарт Бот (Фикс)"],
+    ["boost_node", "Смарт Бот (Рабочий)"],
     ["enable_smart", "Включить Умный Фарм"],
     ["auto_accept", "Авто-принятие игры"],
+    ["auto_queue", "Авто-Поиск (Жмет кнопку)"],
     ["auto_items", "Авто-закуп (ПТ -> БФ -> МОМ)"],
     ["auto_skill", "Авто-прокачка скиллов"]
 ]));
@@ -41,50 +44,63 @@ Menu.Localization.AddLocalizationUnit("russian", new Map([
 // --- МЕНЮ ---
 const UtilityEntry = Menu.AddEntry("Utility");
 
-// 1. BAD GUY (ФИДЕР - КОПИЯ РАБОЧЕГО)
+// 1. BAD GUY (ФИДЕР - ТОТ САМЫЙ)
 const BadGuyNode = UtilityEntry.AddNode("Bad Guy", "panorama/images/items/shadow_amulet_png.vtex_c");
 const FeedNode = BadGuyNode.AddNode("feed_node", "panorama/images/spellicons/skeleton_king_reincarnation_png.vtex_c");
 const RunToRadiant = FeedNode.AddToggle("run_radiant", false);
 const RunToDire = FeedNode.AddToggle("run_dire", false);
 const FastFeed = FeedNode.AddToggle("fast_feed", true);
 
-// 2. SMART BOOSTER (БОТ - ОБНОВЛЕННЫЙ)
+// 2. SMART BOOSTER (БОТ - ПО ТВОЕМУ КОДУ)
 const BoostNode = UtilityEntry.AddNode("boost_node", "panorama/images/items/tome_of_knowledge_png.vtex_c");
 const EnableSmart = BoostNode.AddToggle("enable_smart", false);
 const AutoAccept = BoostNode.AddToggle("auto_accept", true);
-const AutoItems = BoostNode.AddToggle("auto_items", true); // Теперь покупает 3 предмета
+const AutoQueue = BoostNode.AddToggle("auto_queue", true);
+const AutoItems = BoostNode.AddToggle("auto_items", true);
 const AutoSkill = BoostNode.AddToggle("auto_skill", true);
 
 // --- КООРДИНАТЫ БАЗ (ФИД) ---
 const BASE_RADIANT = new Vector3(-7200, -6600, 384);
 const BASE_DIRE = new Vector3(7200, 6500, 384);
 
-// --- КООРДИНАТЫ ЛИНИЙ (БОТ) ---
-const RAD_BOT = new Vector3(6200, -6200, 256); 
-const RAD_MID = new Vector3(-650, -350, 256);  
-const RAD_TOP = new Vector3(-6200, 5500, 256); 
-const RAD_JUNGLE = new Vector3(1000, -4000, 256); 
+// --- КООРДИНАТЫ ЛИНИЙ (БОТ - ДЕРЕВЬЯ) ---
+// Radiant Safe(Bot) / Mid / Hard(Top) / Jungle
+const RAD_BOT_TREE = new Vector3(6200, -6200, 256); 
+const RAD_MID_TREE = new Vector3(-650, -350, 256);
+const RAD_TOP_TREE = new Vector3(-6200, 5500, 256);
+const RAD_JUNGLE = new Vector3(1000, -4000, 256);
 
-const DIRE_BOT = new Vector3(6200, -5500, 256);
-const DIRE_MID = new Vector3(650, 350, 256);
-const DIRE_TOP = new Vector3(-4500, 5800, 256);
+// Dire Hard(Bot) / Mid / Safe(Top) / Jungle
+const DIRE_BOT_TREE = new Vector3(6200, -5500, 256);
+const DIRE_MID_TREE = new Vector3(650, 350, 256);
+const DIRE_TOP_TREE = new Vector3(-4500, 5800, 256);
 const DIRE_JUNGLE = new Vector3(4000, 3000, 256);
 
 let lastTick = 0;
 let lastMove = 0;
 
 EventsSDK.on("PostDataUpdate", () => {
-    // АВТО-ПРИНЯТИЕ
+    // 1. АВТО-ПРИНЯТИЕ
     if (AutoAccept.value && GameState.IsMatchFound && !GameState.HasAccepted) {
         EventsSDK.ExecuteCommand("dota_accept_match");
         return;
+    }
+
+    // 2. АВТО-ПОИСК (ПРОСТО ЖМЕМ КНОПКУ, ЕСЛИ НЕ В ИГРЕ)
+    if (EnableSmart.value && AutoQueue.value) {
+        if (!GameState.IsInGame && !GameState.IsSearching && !GameState.IsMatchFound) {
+            if (!Sleeper.Sleeping("queue_spam")) {
+                EventsSDK.ExecuteCommand("dota_match_find_match");
+                Sleeper.Sleep(5000, "queue_spam"); // Жмем раз в 5 сек
+            }
+        }
     }
 
     const Me = LocalPlayer?.Hero;
     if (!Me || !Me.IsAlive) return;
 
     // ==========================================
-    // 1. ФИДЕР (НЕ ТРОГАЛ, РАБОТАЕТ КАК ЧАСЫ)
+    // ЛОГИКА 1: ФИДЕР (LEGENDARY)
     // ==========================================
     if (RunToRadiant.value || RunToDire.value) {
         let target = RunToRadiant.value ? BASE_RADIANT.Clone() : BASE_DIRE.Clone();
@@ -106,7 +122,7 @@ EventsSDK.on("PostDataUpdate", () => {
             if (activeBlink) {
                 // @ts-ignore
                 Me.CastPosition(activeBlink, Me.Position.Extend(target, 1150));
-                Sleeper.Sleep(350, "blink"); 
+                Sleeper.Sleep(400, "blink"); 
             }
         }
 
@@ -128,10 +144,10 @@ EventsSDK.on("PostDataUpdate", () => {
     }
 
     // ==========================================
-    // 2. БОТ (FIXED MOVEMENT & ITEMS)
+    // ЛОГИКА 2: УМНЫЙ ФАРМ (BOT)
     // ==========================================
     if (EnableSmart.value) {
-        // Авто-скиллы
+        // АВТО-СКИЛЛЫ (РАНДОМ)
         if (AutoSkill.value && Me.AbilityPoints > 0 && !Sleeper.Sleeping("skill")) {
             const abilities = Me.Abilities.filter(a => a.CanLevelUp);
             if (abilities.length > 0) {
@@ -143,28 +159,23 @@ EventsSDK.on("PostDataUpdate", () => {
 
         // АВТО-ЗАКУП (PT -> BF -> MOM)
         if (AutoItems.value && !Sleeper.Sleeping("buy_items")) {
-            // 1. Power Treads
             if (!Me.GetItemByName("item_power_treads")) {
                 // @ts-ignore
                 Me.PurchaseItem("item_power_treads");
                 Sleeper.Sleep(2000, "buy_items");
-            } 
-            // 2. Battle Fury
-            else if (!Me.GetItemByName("item_bfury")) {
+            } else if (!Me.GetItemByName("item_bfury")) {
                 // @ts-ignore
                 Me.PurchaseItem("item_bfury");
                 Sleeper.Sleep(2000, "buy_items");
-            }
-            // 3. Mask of Madness
-            else if (!Me.GetItemByName("item_mask_of_madness")) {
+            } else if (!Me.GetItemByName("item_mask_of_madness")) {
                 // @ts-ignore
                 Me.PurchaseItem("item_mask_of_madness");
                 Sleeper.Sleep(2000, "buy_items");
             }
         }
 
-        // ЛОГИКА ДВИЖЕНИЯ (УСКОРЕННАЯ - 500мс)
-        if (Date.now() - lastMove >= 500) { // Было 3000, стало 500 - будет бегать бодрее
+        // ДВИЖЕНИЕ (ВОЗВРАТ К РАБОЧЕЙ ЛОГИКЕ)
+        if (Date.now() - lastMove >= 1000) { // Интервал 1 секунда
             lastMove = Date.now();
             const isRadiant = LocalPlayer.Team === 2;
             
@@ -177,38 +188,38 @@ EventsSDK.on("PostDataUpdate", () => {
                 return;
             }
 
-            // 2. ВЫБОР ЦЕЛИ ПО УРОВНЮ
+            // 2. ЦИКЛ ЛИНИЙ (ТВОЯ СХЕМА)
             let target = new Vector3(0,0,0);
 
-            if (Me.Level < 2) {
-                // 1 Уровень -> НИЗ (Деревья)
-                target = isRadiant ? RAD_BOT.Clone() : DIRE_BOT.Clone();
-            } else if (Me.Level >= 2 && Me.Level < 6) {
-                // 2-5 Уровень -> МИД (Деревья)
-                target = isRadiant ? RAD_MID.Clone() : DIRE_MID.Clone();
-            } else if (Me.Level >= 6 && Me.Level < 10) {
-                // 6-9 Уровень -> ВЕРХ (Деревья)
-                target = isRadiant ? RAD_TOP.Clone() : DIRE_TOP.Clone();
-            } else {
+            if (Me.Level < 2) { 
+                // 1 Уровень -> НИЗ
+                target = isRadiant ? RAD_BOT_TREE.Clone() : DIRE_BOT_TREE.Clone();
+            } else if (Me.Level >= 2 && Me.Level < 6) { 
+                // 2-5 Уровень -> МИД
+                target = isRadiant ? RAD_MID_TREE.Clone() : DIRE_MID_TREE.Clone();
+            } else if (Me.Level >= 6 && Me.Level < 10) { 
+                // 6-9 Уровень -> ВЕРХ
+                target = isRadiant ? RAD_TOP_TREE.Clone() : DIRE_TOP_TREE.Clone();
+            } else { 
                 // 10+ Уровень -> ЛЕС
                 target = isRadiant ? RAD_JUNGLE.Clone() : DIRE_JUNGLE.Clone();
-                // В лесу бегаем широко
-                target.x += (Math.random() * 1500 - 750);
-                target.y += (Math.random() * 1500 - 750);
+                // В лесу рандом больше
+                target.x += (Math.random() * 1000 - 500);
+                target.y += (Math.random() * 1000 - 500);
             }
 
-            // Микро-рандом для деревьев (чтобы не кикнуло за AFK)
+            // Рандом в точке (чтобы не кикнуло)
             if (Me.Level < 10) {
                 target.x += (Math.random() * 300 - 150);
                 target.y += (Math.random() * 300 - 150);
             }
 
             try {
-                // Используем ту же магию движения, что и в фидере
+                // ТА ЖЕ МАГИЯ ДВИЖЕНИЯ, ЧТО И В КОДЕ, КОТОРЫЙ ТЫ СКИНУЛ
                 // @ts-ignore
                 ExecuteOrder.HoldOrdersTarget = target;
                 // @ts-ignore
-                Me.MoveTo(target, false, true); 
+                Me.MoveTo(target, false, true);
             } catch (e) {
                 // @ts-ignore
                 Me.MoveTo(target);
