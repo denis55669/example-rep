@@ -7,16 +7,14 @@ import {
 } from "github.com/octarine-public/wrapper/index"
 
 // --- МЕНЮ ---
-const Main = Menu.AddEntry("Grief Lord V27", "panorama/images/items/divine_rapier_png.vtex_c");
+const Main = Menu.AddEntry("Grief Lord V28", "panorama/images/items/divine_rapier_png.vtex_c");
 
-// Вибір сторони
+// Налаштування
 const RunRadiant = Main.AddToggle("1. БІГТИ ВНИЗ (Radiant)", false);
 const RunDire = Main.AddToggle("2. БІГТИ ВГОРУ (Dire)", false);
 
-// Кого відправляти
-const FeedHero = Main.AddToggle("3. Герой", false);
-const FeedCour = Main.AddToggle("4. Кур'єри", false);
-const FeedAllies = Main.AddToggle("5. Союзники (Shared)", false);
+const FeedHero = Main.AddToggle("3. Фід ГЕРОЄМ", false);
+const FeedOthers = Main.AddToggle("4. Фід ІНШИМИ (Кури/Shared)", false);
 
 let lastOrder = 0;
 
@@ -25,8 +23,8 @@ EventsSDK.on("PostDataUpdate", () => {
     if (!Me || !Me.IsAlive) return;
 
     const now = Date.now();
-    // Спамимо частіше, як у скрипті Block.ts (раз на 0.2 сек)
-    if (now - lastOrder < 200) return;
+    // Таймер: Раз на 0.5 сек (золота середина між швидкістю і лагами)
+    if (now - lastOrder < 500) return;
     lastOrder = now;
 
     // 1. ЦІЛЬ
@@ -36,52 +34,62 @@ EventsSDK.on("PostDataUpdate", () => {
 
     if (!target) return;
 
-    // Рандом, щоб сервер не ігнорував команди
-    target.x += (Math.random() * 100 - 50);
-    target.y += (Math.random() * 100 - 50);
+    // Рандом
+    target.x += (Math.random() * 200 - 100);
+    target.y += (Math.random() * 200 - 100);
 
-    // 2. ЗБИРАЄМО АРМІЮ (Логіка з Controllables.ts)
-    const army: any[] = [];
-
-    // ГЕРОЙ
-    if (FeedHero.value) army.push(Me);
-
-    // КУР'ЄРИ
-    if (FeedCour.value) {
-        const couriers = EntityManager.GetEntitiesByClass("npc_dota_courier");
-        for (const cour of couriers) {
-            // @ts-ignore
-            // Перевіряємо IsControllable, як у файлі Controllables.ts
-            if (cour.IsAlive && cour.IsMyTeam && cour.IsControllable) {
-                army.push(cour);
-            }
-        }
-    }
-
-    // СОЮЗНИКИ
-    if (FeedAllies.value) {
-        const heroes = EntityManager.GetEntitiesByClass("npc_dota_hero_*");
-        for (const hero of heroes) {
-            // @ts-ignore
-            if (hero.IsAlive && hero.IsMyTeam && !hero.IsMe && hero.IsControllable) {
-                army.push(hero);
-            }
-        }
-    }
-
-    // 3. ВИКОНАННЯ НАКАЗУ (СЕКРЕТНИЙ МЕТОД)
-    for (const unit of army) {
-        // Використовуємо аргументи: (position, queue=false, bypass=true)
-        // Це взято з файлу Controllables.ts -> function MoveUnit
+    // --- БЛОК 1: ГЕРОЙ (100% НАДІЙНІСТЬ) ---
+    if (FeedHero.value) {
         try {
+            // Використовуємо простий метод, який працював у V24
             // @ts-ignore
-            unit.MoveTo(target, false, true);
+            Me.MoveTo(target);
         } catch (e) {
-            // Якщо не спрацювало, пробуємо звичайний метод
-            // @ts-ignore
-            unit.MoveTo(target);
+            // Якщо тут помилка - це дуже дивно
+        }
+    }
+
+    // --- БЛОК 2: ІНШІ (ЕКСПЕРИМЕНТАЛЬНИЙ МЕТОД З Controllables.ts) ---
+    if (FeedOthers.value) {
+        const army: any[] = [];
+
+        // Збираємо Кур'єрів
+        try {
+            const couriers = EntityManager.GetEntitiesByClass("npc_dota_courier");
+            for (const cour of couriers) {
+                // @ts-ignore
+                if (cour.IsAlive && cour.IsMyTeam && cour.IsControllable) {
+                    army.push(cour);
+                }
+            }
+        } catch (e) {}
+
+        // Збираємо Героїв-союзників
+        try {
+            const heroes = EntityManager.GetEntitiesByClass("npc_dota_hero_*");
+            for (const hero of heroes) {
+                // @ts-ignore
+                if (hero.IsAlive && hero.IsMyTeam && !hero.IsMe && hero.IsControllable) {
+                    army.push(hero);
+                }
+            }
+        } catch (e) {}
+
+        // Віддаємо наказ (Як у файлі Controllables.ts)
+        for (const unit of army) {
+            try {
+                // Спроба №1: Метод із твоїх файлів (bypass queue)
+                // @ts-ignore
+                unit.MoveTo(target, false, true);
+            } catch (e) {
+                // Спроба №2: Якщо перший метод крашнувся, пробуємо звичайний
+                try {
+                     // @ts-ignore
+                    unit.MoveTo(target);
+                } catch (e2) {}
+            }
         }
     }
 });
 
-console.log("Grief Lord V27 (Pro Logic) Loaded!");
+console.log("Grief Lord V28 Loaded!");
