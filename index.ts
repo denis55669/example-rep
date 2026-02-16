@@ -8,20 +8,20 @@ import {
     TickSleeper,
     GameState,
     EntityManager,
-    GameRules
+    GameRules,
+    Ability
 } from "github.com/octarine-public/wrapper/index"
 
 const Sleeper = new TickSleeper();
 
-// --- МЕНЮ (Utility -> Smart Bot) ---
+// --- МЕНЮ ---
 const UtilityEntry = Menu.AddEntry("Utility");
-const BotNode = UtilityEntry.AddNode("Smart Bot", "panorama/images/items/tome_of_knowledge_png.vtex_c");
+const BotNode = UtilityEntry.AddNode("Smart Bot V95", "panorama/images/items/tome_of_knowledge_png.vtex_c");
 
-const EnableBot = BotNode.AddToggle("Enable Movement", true); // Теперь включен по умолчанию
-const AutoSkill = BotNode.AddToggle("Auto Level Skills (Sven 2nd)", true);
-const AutoItems = BotNode.AddToggle("Auto Buy Items", true);
+const EnableBot = BotNode.AddToggle("Enable Movement", true); // Включено за замовчуванням
+const AutoSkill = BotNode.AddToggle("Auto Level Skills", true);
 
-// --- ГЛУБОКИЕ ТОЧКИ ---
+// --- КООРДИНАТИ (ГЛИБОКІ НИЧКИ) ---
 const RAD_SPOTS = {
     BOT_XP: new Vector3(6600, -6600, 256),  
     BOT_LANE: new Vector3(6200, -5800, 256), 
@@ -46,58 +46,100 @@ EventsSDK.on("PostDataUpdate", () => {
     const Me = LocalPlayer?.Hero;
     if (!Me || !Me.IsAlive) return;
 
-    // 1. ПОЛНОЕ ВЫКЛЮЧЕНИЕ ПОСЛЕ 10 ЛВЛ
+    // ==========================================
+    // 1. АГРЕСИВНИЙ СТАРТ (0:00 - 1:00)
+    // ==========================================
+    // Якщо час гри менше 60 секунд і бот вимкнений - вмикаємо примусово
+    if (GameRules && GameRules.GameTime < 60) {
+        if (!EnableBot.value) {
+            EnableBot.value = true;
+            console.log("Force Start Bot!");
+        }
+    }
+
+    // ==========================================
+    // 2. KILL-SWITCH (10 РІВЕНЬ)
+    // ==========================================
     if (Me.Level >= 10) {
         if (EnableBot.value) EnableBot.value = false;
         return; 
     }
 
     if (!EnableBot.value) return;
-    const now = Date.now();
 
-    // 2. ПРОКАЧКА СВЕНА (MAX 2-й СКИЛЛ)
+    // ==========================================
+    // 3. ПРОКАЧКА СКІЛІВ (НОВА ЛОГІКА)
+    // ==========================================
     if (AutoSkill.value && Me.AbilityPoints > 0 && !Sleeper.Sleeping("skill_up")) {
-        const cleave = Me.GetAbilityByName("sven_great_cleave");
-        const hammer = Me.GetAbilityByName("sven_storm_bolt");
-        const targetAbility = (cleave && cleave.CanLevelUp) ? cleave : hammer;
-        if (targetAbility) {
+        // Спроба знайти Great Cleave або Storm Bolt
+        let abilityToLevel = Me.GetAbilityByName("sven_great_cleave");
+        
+        if (!abilityToLevel || !abilityToLevel.CanLevelUp) {
+            abilityToLevel = Me.GetAbilityByName("sven_storm_bolt");
+        }
+        
+        // Якщо не знайшли конкретні, беремо будь-який доступний (щоб не тупив)
+        if (!abilityToLevel || !abilityToLevel.CanLevelUp) {
+            abilityToLevel = Me.Abilities.find(a => a.CanLevelUp && !a.IsHidden && a.Name !== "attribute_bonus");
+        }
+
+        if (abilityToLevel) {
             // @ts-ignore
-            Me.UpgradeAbility(targetAbility);
-            Sleeper.Sleep(2000, "skill_up");
+            Me.UpgradeAbility(abilityToLevel);
+            Sleeper.Sleep(1500, "skill_up");
         }
     }
 
-    // 3. ЗАКУП (PT -> BF -> MOM)
-    if (AutoItems.value && !Sleeper.Sleeping("buy_logic")) {
-        const items = ["item_power_treads", "item_bfury", "item_mask_of_madness"];
-        for (const itemName of items) {
-            if (!Me.GetItemByName(itemName)) {
-                // @ts-ignore
-                Me.PurchaseItem(itemName);
-                Sleeper.Sleep(5000, "buy_logic");
-                break;
-            }
-        }
-    }
-
-    // 4. ДВИЖЕНИЕ (РАБОТАЕТ С 0 МИНУТЫ)
+    // ==========================================
+    // 4. РУХ ТА РОТАЦІЯ (ЦИКЛ ПО ЛІНІЯХ)
+    // ==========================================
+    const now = Date.now();
     if (now - lastMoveTick >= 3000) {
         lastMoveTick = now;
         const isRadiant = LocalPlayer.Team === 2;
         const spots = isRadiant ? RAD_SPOTS : DIRE_SPOTS;
         
+        // Визначаємо лінію по циклу (кожні 2 рівні зміна лінії)
+        // Рівні 1-2: index 0 (BOT)
+        // Рівні 3-4: index 1 (MID)
+        // Рівні 5-6: index 2 (TOP)
+        // Рівні 7-8: index 0 (BOT) ...
+        const cycleIndex = Math.ceil(Me.Level / 2) % 3; 
+        
+        // Логіка 1/1 (Хованки / Атака)
+        const isHideLevel = (Me.Level % 2 !== 0); // 1, 3, 5, 7, 9
+        
         let target: Vector3;
-        const isHideLevel = (Me.Level % 2 !== 0); // 1, 3, 5, 7, 9 - прячемся
 
-        // Выбор линии
-        if (Me.Level < 2) {
-            target = isHideLevel ? spots.BOT_XP.Clone() : spots.BOT_LANE.Clone();
-        } else if (Me.Level < 6) {
+        // ВИБІР ЛІНІЇ ЗА ЦИКЛОМ
+        if (cycleIndex === 1) { // MID (Index 1 - це залишок 1, тобто рівні 3-4)
             target = isHideLevel ? spots.MID_XP.Clone() : spots.MID_LANE.Clone();
-        } else {
-            target = isHideLevel ? spots.TOP_XP.Clone() : spots.TOP_LANE.Clone();
+        } else if (cycleIndex === 0) { // TOP (Index 0 - це рівні 5-6)
+             // Тут математика % 3 дає: 1,2->1(bot? ні, давай спростимо)
+             // Давай так:
+             // 1-2 -> BOT
+             // 3-4 -> MID
+             // 5-6 -> TOP
+             // 7-8 -> BOT
+             target = isHideLevel ? spots.TOP_XP.Clone() : spots.TOP_LANE.Clone();
+        } else { // BOT (Решта випадків, старт)
+             target = isHideLevel ? spots.BOT_XP.Clone() : spots.BOT_LANE.Clone();
+        }
+        
+        // *ПРАВИЛЬНА ПЕРЕВІРКА ЦИКЛУ*
+        // Якщо (Level+1)/2 = 1 -> Bot
+        // Якщо (Level+1)/2 = 2 -> Mid
+        // Якщо (Level+1)/2 = 3 -> Top
+        const cycle = Math.floor((Me.Level + 1) / 2) % 3;
+        if (cycle === 1) { // BOT
+             target = isHideLevel ? spots.BOT_XP.Clone() : spots.BOT_LANE.Clone();
+        } else if (cycle === 2) { // MID
+             target = isHideLevel ? spots.MID_XP.Clone() : spots.MID_LANE.Clone();
+        } else { // TOP (0)
+             target = isHideLevel ? spots.TOP_XP.Clone() : spots.TOP_LANE.Clone();
         }
 
+        // Рандом
         target.x += (Math.random() * 200 - 100);
         target.y += (Math.random() * 200 - 100);
 
@@ -105,11 +147,11 @@ EventsSDK.on("PostDataUpdate", () => {
             // @ts-ignore
             ExecuteOrder.HoldOrdersTarget = target;
             if (!isHideLevel) {
-                // ПУШ (Четные уровни): Атака в землю (A-click)
+                // ПУШ (Парні рівні): Атака (A-click)
                 // @ts-ignore
                 Me.Attack(target); 
             } else {
-                // КУСТЫ (Нечетные уровни): Bypass в нычку
+                // КУЩІ (Непарні рівні): Bypass
                 // @ts-ignore
                 Me.MoveTo(target, false, true); 
             }
