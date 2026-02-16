@@ -8,7 +8,7 @@ import {
     TickSleeper
 } from "github.com/octarine-public/wrapper/index"
 
-// Ініціалізація сліпера для затримок
+// Ініціалізація сліпера для пауз між блінками
 const Sleeper = new TickSleeper();
 
 // --- ЛОКАЛІЗАЦІЯ (RU/EN) ---
@@ -26,10 +26,10 @@ Menu.Localization.AddLocalizationUnit("russian", new Map([
     ["fast_feed", "3. Быстрый фид (Блинки и Скиллы)"]
 ]));
 
-// --- МЕНЮ (Інтеграція в Utility) ---
-// Використовуємо стандартну назву Entry "Utility", як у твоїх скриптах
-const UtilityEntry = Menu.AddEntry("Utility");
-const FeedNode = UtilityEntry.AddNode("feed_node", "panorama/images/items/divine_rapier_png.vtex_c");
+// --- МЕНЮ (Інтеграція в Utility з новою іконкою) ---
+const UtilityEntry = Menu.AddEntry("Utility"); //
+// Встановлюємо іконку черепа (Reincarnation) для фіду
+const FeedNode = UtilityEntry.AddNode("feed_node", "panorama/images/spellicons/skeleton_king_reincarnation_png.vtex_c");
 
 const RunToRadiant = FeedNode.AddToggle("run_radiant", false);
 const RunToDire = FeedNode.AddToggle("run_dire", false);
@@ -56,13 +56,13 @@ EventsSDK.on("PostDataUpdate", () => {
     // ==========================================
     if (FastFeed.value && !Sleeper.Sleeping && Me.Distance(target) > 800) {
         
-        // Пошук здібностей (AM, QoP, Void, Void Spirit)
+        // Здібності героїв
         const blinkSkill = Me.GetAbilityByName("antimage_blink") || 
                            Me.GetAbilityByName("queenofpain_blink") || 
                            Me.GetAbilityByName("faceless_void_time_walk") ||
                            Me.GetAbilityByName("void_spirit_astral_step");
 
-        // Пошук предметів
+        // Предмети
         const blinkItem = Me.GetItemByName("item_blink") || 
                           Me.GetItemByName("item_overwhelming_blink") || 
                           Me.GetItemByName("item_swift_blink") || 
@@ -75,7 +75,7 @@ EventsSDK.on("PostDataUpdate", () => {
             const blinkPos = Me.Position.Extend(target, 1150);
             // @ts-ignore
             Me.CastPosition(activeBlink, blinkPos);
-            Sleeper.Sleep(400); // Пауза
+            Sleeper.Sleep(400); 
         }
     }
 
@@ -85,15 +85,17 @@ EventsSDK.on("PostDataUpdate", () => {
     if (now - lastTick >= 100) {
         lastTick = now;
         
-        // Рандомний розкид 400
+        // Рандомний розкид для імітації реального руху
         target.x += (Math.random() * 800 - 400);
         target.y += (Math.random() * 800 - 400);
 
         try {
+            // Прямий запис у таргет наказів
             // @ts-ignore
-            ExecuteOrder.HoldOrdersTarget = target; //
+            ExecuteOrder.HoldOrdersTarget = target;
+            // Рух з байпасом перевірок
             // @ts-ignore
-            Me.MoveTo(target, false, true); //
+            Me.MoveTo(target, false, true);
         } catch (e) {
             // @ts-ignore
             Me.MoveTo(target);
@@ -101,4 +103,4 @@ EventsSDK.on("PostDataUpdate", () => {
     }
 });
 
-console.log("best cheat octorine PRIME V52: Integrated into Utility!");
+console.log("best cheat octorine PRIME V53: Icon Updated!");
