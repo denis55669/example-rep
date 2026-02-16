@@ -7,7 +7,8 @@ import {
     ExecuteOrder,
     TickSleeper,
     GameState,
-    EntityManager
+    EntityManager,
+    GameRules
 } from "github.com/octarine-public/wrapper/index"
 
 const Sleeper = new TickSleeper();
@@ -16,11 +17,11 @@ const Sleeper = new TickSleeper();
 const UtilityEntry = Menu.AddEntry("Utility");
 const BotNode = UtilityEntry.AddNode("Smart Bot", "panorama/images/items/tome_of_knowledge_png.vtex_c");
 
-const EnableBot = BotNode.AddToggle("Enable Movement", false);
+const EnableBot = BotNode.AddToggle("Enable Movement", true); // Теперь включен по умолчанию
 const AutoSkill = BotNode.AddToggle("Auto Level Skills (Sven 2nd)", true);
 const AutoItems = BotNode.AddToggle("Auto Buy Items", true);
 
-// --- КООРДИНАТИ (Глибокі нички) ---
+// --- ГЛУБОКИЕ ТОЧКИ ---
 const RAD_SPOTS = {
     BOT_XP: new Vector3(6600, -6600, 256),  
     BOT_LANE: new Vector3(6200, -5800, 256), 
@@ -45,20 +46,16 @@ EventsSDK.on("PostDataUpdate", () => {
     const Me = LocalPlayer?.Hero;
     if (!Me || !Me.IsAlive) return;
 
-    // ==================================================
-    // АБСОЛЮТНИЙ ВИМИКАЧ (ВИДАЛЯЄ РОБОТА ПІСЛЯ 10 ЛВЛ)
-    // ==================================================
+    // 1. ПОЛНОЕ ВЫКЛЮЧЕНИЕ ПОСЛЕ 10 ЛВЛ
     if (Me.Level >= 10) {
-        if (EnableBot.value) {
-            EnableBot.value = false; // Вимикаємо візуально
-        }
-        return; // Виходимо з функції, нічого не виконуємо
+        if (EnableBot.value) EnableBot.value = false;
+        return; 
     }
 
     if (!EnableBot.value) return;
     const now = Date.now();
 
-    // 1. ПРОКАЧКА СВЕНА (2-Й СКІЛ ПРІОРИТЕТ)
+    // 2. ПРОКАЧКА СВЕНА (MAX 2-й СКИЛЛ)
     if (AutoSkill.value && Me.AbilityPoints > 0 && !Sleeper.Sleeping("skill_up")) {
         const cleave = Me.GetAbilityByName("sven_great_cleave");
         const hammer = Me.GetAbilityByName("sven_storm_bolt");
@@ -70,7 +67,7 @@ EventsSDK.on("PostDataUpdate", () => {
         }
     }
 
-    // 2. ЗАКУП (ПТ -> БФ -> МОМ)
+    // 3. ЗАКУП (PT -> BF -> MOM)
     if (AutoItems.value && !Sleeper.Sleeping("buy_logic")) {
         const items = ["item_power_treads", "item_bfury", "item_mask_of_madness"];
         for (const itemName of items) {
@@ -83,15 +80,16 @@ EventsSDK.on("PostDataUpdate", () => {
         }
     }
 
-    // 3. РУХ (ЦИКЛ 1/1 РІВЕНЬ)
+    // 4. ДВИЖЕНИЕ (РАБОТАЕТ С 0 МИНУТЫ)
     if (now - lastMoveTick >= 3000) {
         lastMoveTick = now;
         const isRadiant = LocalPlayer.Team === 2;
         const spots = isRadiant ? RAD_SPOTS : DIRE_SPOTS;
         
         let target: Vector3;
-        const isHideLevel = (Me.Level % 2 !== 0); // Непарні: 1, 3, 5, 7, 9
+        const isHideLevel = (Me.Level % 2 !== 0); // 1, 3, 5, 7, 9 - прячемся
 
+        // Выбор линии
         if (Me.Level < 2) {
             target = isHideLevel ? spots.BOT_XP.Clone() : spots.BOT_LANE.Clone();
         } else if (Me.Level < 6) {
@@ -107,11 +105,11 @@ EventsSDK.on("PostDataUpdate", () => {
             // @ts-ignore
             ExecuteOrder.HoldOrdersTarget = target;
             if (!isHideLevel) {
-                // ПАРНИЙ РІВЕНЬ: Атака кріпів
+                // ПУШ (Четные уровни): Атака в землю (A-click)
                 // @ts-ignore
                 Me.Attack(target); 
             } else {
-                // НЕПАРНИЙ РІВЕНЬ: Сидимо в кущах
+                // КУСТЫ (Нечетные уровни): Bypass в нычку
                 // @ts-ignore
                 Me.MoveTo(target, false, true); 
             }
