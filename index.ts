@@ -10,16 +10,16 @@ import {
 // --- МЕНЮ (Категорія за замовчуванням) ---
 const Main = Menu.AddEntry("best cheat octorine", "panorama/images/items/aegis_png.vtex_c");
 
-// 1. Вкладка Feed (ЗАФІКСОВАНО - НЕ ЗМІНЮВАТИ)
+// 1. Вкладка Feed (Твій перевірений варіант)
 const FeedTab = Main.AddNode("feed");
 const RunToRadiant = FeedTab.AddToggle("1. Feed RADIANT (Вниз)", false);
 const RunToDire = FeedTab.AddToggle("2. Feed DIRE (Вгору)", false);
 
-// 2. Вкладка Armlet (ПРОФЕСІЙНИЙ АБУЗ)
+// 2. Вкладка Armlet (Логіка з Lua-скрипта)
 const ArmletTab = Main.AddNode("armlet abuse");
 const EnableArmlet = ArmletTab.AddToggle("Увімкнути Абуз", false);
-const Threshold = ArmletTab.AddSlider("Поріг HP для абузу", 300, 100, 700, 10); // За замовчуванням 300
-const ToggleDelay = ArmletTab.AddSlider("Затримка перемикання (мс)", 40, 10, 200, 10);
+const Threshold = ArmletTab.AddSlider("Поріг HP", 350, 100, 800, 10);
+const CustomDelay = ArmletTab.AddSlider("Швидкість абузу (мс)", 50, 20, 300, 10);
 
 // Константи
 const BASE_RADIANT = new Vector3(-7200, -6600, 384);
@@ -27,7 +27,7 @@ const BASE_DIRE = new Vector3(7200, 6500, 384);
 
 let lastTick = 0;
 let lastArmletAction = 0;
-let armletState = "READY"; // READY -> TURNING_OFF -> TURNING_ON
+let isToggling = false; // Чи ми зараз у процесі перемикання
 
 EventsSDK.on("PostDataUpdate", () => {
     const Me = LocalPlayer?.Hero;
@@ -35,7 +35,7 @@ EventsSDK.on("PostDataUpdate", () => {
     const now = Date.now();
 
     // ==========================================
-    // ЛОГІКА FEED (ТВІЙ ЛЕГЕНДАРНИЙ ВАРІАНТ)
+    // ЛОГІКА FEED (БЕЗ ЗМІН)
     // ==========================================
     if (RunToRadiant.value || RunToDire.value) {
         if (now - lastTick >= 100) {
@@ -61,42 +61,51 @@ EventsSDK.on("PostDataUpdate", () => {
     }
 
     // ==========================================
-    // ЛОГІКА ARMLET (SMART TOGGLE)
+    // ЛОГІКА ARMLET (PRO LOGIC)
     // ==========================================
     if (EnableArmlet.value) {
         const armlet = GetArmlet(Me);
         
+        // Якщо ми у фонтані - не абузимо
+        if (Me.HealthRegen > 50) return;
+
         if (armlet && armlet.CanCast) {
             // @ts-ignore
-            const isToggled = armlet.IsToggled; // Чи включена Unholy Strength
+            const isActive = armlet.IsToggled; // Стан Unholy Strength
 
-            // КРОК 1: Якщо мало HP і армлет включений - ВИМИКАЄМО
-            if (armletState === "READY" && isToggled && Me.Health < Threshold.value) {
-                // @ts-ignore
-                armlet.CastNoTarget();
-                armletState = "TURNING_ON"; // Готуємось включити
-                lastArmletAction = now;
-            }
-            
-            // КРОК 2: Якщо вимкнули - ВМИКАЄМО назад через мікро-затримку
-            if (armletState === "TURNING_ON" && !isToggled) {
-                if (now - lastArmletAction >= ToggleDelay.value) {
-                    // @ts-ignore
-                    armlet.CastNoTarget();
-                    armletState = "READY";
+            // КРОК 1: HP впало -> Вимикаємо (якщо включений)
+            if (!isToggling && isActive && Me.Health < Threshold.value) {
+                if (now - lastArmletAction > 250) { // Захист як у Lua
+                    ToggleItem(armlet);
+                    isToggling = true;
                     lastArmletAction = now;
                 }
             }
-
-            // ЗАХИСТ: Якщо застрягли у вимкненому стані - виправляємо
-            if (armletState === "TURNING_ON" && now - lastArmletAction > 500) {
-                armletState = "READY";
+            
+            // КРОК 2: Ми вимкнули -> Вмикаємо назад
+            if (isToggling && !isActive) {
+                // Чекаємо мікро-затримку для реєстрації сервером
+                if (now - lastArmletAction >= CustomDelay.value) {
+                    ToggleItem(armlet);
+                    isToggling = false;
+                    lastArmletAction = now;
+                }
             }
+            
+            // Скидання стану, якщо забагалося
+            if (isToggling && now - lastArmletAction > 1000) isToggling = false;
         }
     }
 });
 
-// Допоміжна функція пошуку армлета (слот Z та інші)
+// Універсальна функція перемикання
+function ToggleItem(item: any) {
+    try {
+        if (item.Toggle) item.Toggle(); // Спроба через прямий метод Toggle
+        else item.CastNoTarget();      // Спроба через звичайний каст
+    } catch (e) {}
+}
+
 function GetArmlet(unit: Unit) {
     for (let i = 0; i <= 5; i++) {
         const item = unit.GetItemInSlot(i);
@@ -106,4 +115,4 @@ function GetArmlet(unit: Unit) {
     return null;
 }
 
-console.log("best cheat octorine: Feed Lite + Armlet God V3 Loaded");
+console.log("best cheat octorine: Feed + Armlet Pro V4 Loaded");
