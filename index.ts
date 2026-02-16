@@ -15,11 +15,11 @@ const Sleeper = new TickSleeper();
 
 // --- ЛОКАЛІЗАЦІЯ ---
 Menu.Localization.AddLocalizationUnit("english", new Map([
-    ["feed_node", "Feed (Working)"],
-    ["run_radiant", "1. Feed RADIANT"],
-    ["run_dire", "2. Feed DIRE"],
-    ["fast_feed", "3. Fast Feed"],
-    ["boost_node", "Smart Bot (Feed Move)"],
+    ["feed_node", "Feed (ORIGINAL V53)"],
+    ["run_radiant", "1. Feed RADIANT (Down)"],
+    ["run_dire", "2. Feed DIRE (Up)"],
+    ["fast_feed", "3. Fast Feed (Blinks & Skills)"],
+    ["boost_node", "Smart Bot (Feed Movement)"],
     ["enable_smart", "Enable Smart Farm"],
     ["auto_accept", "Auto Accept Match"],
     ["auto_queue", "Auto Find (Button Press)"],
@@ -28,11 +28,11 @@ Menu.Localization.AddLocalizationUnit("english", new Map([
 ]));
 
 Menu.Localization.AddLocalizationUnit("russian", new Map([
-    ["feed_node", "Фид (Рабочий)"],
-    ["run_radiant", "1. Фид RADIANT"],
-    ["run_dire", "2. Фид DIRE"],
-    ["fast_feed", "3. Быстрый фид"],
-    ["boost_node", "Смарт Бот (Движение Фида)"],
+    ["feed_node", "Фид (ОРИГИНАЛ V53)"],
+    ["run_radiant", "1. Фид RADIANT (Вниз)"],
+    ["run_dire", "2. Фид DIRE (Вверх)"],
+    ["fast_feed", "3. Быстрый фид (Блинки и Скиллы)"],
+    ["boost_node", "Смарт Бот (Движение как у Фида)"],
     ["enable_smart", "Включить Умный Фарм"],
     ["auto_accept", "Авто-принятие игры"],
     ["auto_queue", "Авто-Поиск (Жмет кнопку)"],
@@ -43,7 +43,7 @@ Menu.Localization.AddLocalizationUnit("russian", new Map([
 // --- МЕНЮ ---
 const UtilityEntry = Menu.AddEntry("Utility");
 
-// 1. BAD GUY (ФИДЕР)
+// 1. BAD GUY (ФИДЕР - НЕ ТРОГАЕМ)
 const BadGuyNode = UtilityEntry.AddNode("Bad Guy", "panorama/images/items/shadow_amulet_png.vtex_c");
 const FeedNode = BadGuyNode.AddNode("feed_node", "panorama/images/spellicons/skeleton_king_reincarnation_png.vtex_c");
 const RunToRadiant = FeedNode.AddToggle("run_radiant", false);
@@ -58,11 +58,11 @@ const AutoQueue = BoostNode.AddToggle("auto_queue", true);
 const AutoItems = BoostNode.AddToggle("auto_items", true);
 const AutoSkill = BoostNode.AddToggle("auto_skill", true);
 
-// --- КООРДИНАТЫ ---
+// --- КООРДИНАТЫ БАЗ (ФИД) ---
 const BASE_RADIANT = new Vector3(-7200, -6600, 384);
 const BASE_DIRE = new Vector3(7200, 6500, 384);
 
-// Деревья (безопасные зоны)
+// --- КООРДИНАТЫ ЛИНИЙ (БОТ - ДЕРЕВЬЯ) ---
 const RAD_BOT_TREE = new Vector3(6200, -6200, 256); 
 const RAD_MID_TREE = new Vector3(-650, -350, 256);
 const RAD_TOP_TREE = new Vector3(-6200, 5500, 256);
@@ -97,17 +97,26 @@ EventsSDK.on("PostDataUpdate", () => {
     if (!Me || !Me.IsAlive) return;
 
     // ==========================================
-    // ЛОГИКА 1: ФИДЕР
+    // ЛОГИКА 1: ФИДЕР (ОРИГИНАЛЬНЫЙ КОД V53)
     // ==========================================
     if (RunToRadiant.value || RunToDire.value) {
         let target = RunToRadiant.value ? BASE_RADIANT.Clone() : BASE_DIRE.Clone();
 
+        // Блинки (ВЕРНУЛ ВСЕ КАК БЫЛО)
         if (FastFeed.value && !Sleeper.Sleeping("blink") && Me.Distance(target) > 800) {
             const blinkSkill = Me.GetAbilityByName("antimage_blink") || 
                                Me.GetAbilityByName("queenofpain_blink") || 
-                               Me.GetAbilityByName("faceless_void_time_walk");
-            const blinkItem = Me.GetItemByName("item_blink");
-            const activeBlink = (blinkSkill && blinkSkill.CanBeCasted()) ? blinkSkill : (blinkItem && blinkItem.CanBeCasted()) ? blinkItem : null;
+                               Me.GetAbilityByName("faceless_void_time_walk") ||
+                               Me.GetAbilityByName("void_spirit_astral_step");
+
+            const blinkItem = Me.GetItemByName("item_blink") || 
+                              Me.GetItemByName("item_overwhelming_blink") || 
+                              Me.GetItemByName("item_swift_blink") || 
+                              Me.GetItemByName("item_arcane_blink");
+
+            const activeBlink = (blinkSkill && blinkSkill.CanBeCasted()) ? blinkSkill : 
+                                (blinkItem && blinkItem.CanBeCasted()) ? blinkItem : null;
+
             if (activeBlink) {
                 // @ts-ignore
                 Me.CastPosition(activeBlink, Me.Position.Extend(target, 1150));
@@ -115,6 +124,7 @@ EventsSDK.on("PostDataUpdate", () => {
             }
         }
 
+        // Движение (ВЕРНУЛ СТАРЫЙ МЕТОД)
         if (Date.now() - lastTick >= 100) {
             lastTick = Date.now();
             target.x += (Math.random() * 800 - 400);
@@ -123,17 +133,17 @@ EventsSDK.on("PostDataUpdate", () => {
                 // @ts-ignore
                 ExecuteOrder.HoldOrdersTarget = target;
                 // @ts-ignore
-                Me.MoveTo(target, false, true); // BYPASS
+                Me.MoveTo(target, false, true); // BYPASS ВКЛЮЧЕН
             } catch (e) {
                 // @ts-ignore
                 Me.MoveTo(target);
             }
         }
-        return; 
+        return; // Если фидим - бот выключен
     }
 
     // ==========================================
-    // ЛОГИКА 2: СМАРТ БОТ (C ТЕМ ЖЕ ДВИЖЕНИЕМ)
+    // ЛОГИКА 2: СМАРТ БОТ (ДВИЖЕНИЕ КАК У ФИДЕРА)
     // ==========================================
     if (EnableSmart.value) {
         // АВТО-СКИЛЛЫ
@@ -146,7 +156,7 @@ EventsSDK.on("PostDataUpdate", () => {
             }
         }
 
-        // АВТО-ЗАКУП
+        // АВТО-ЗАКУП (PT -> BF -> MOM)
         if (AutoItems.value && !Sleeper.Sleeping("buy_items")) {
             if (!Me.GetItemByName("item_power_treads")) {
                 // @ts-ignore
@@ -163,8 +173,8 @@ EventsSDK.on("PostDataUpdate", () => {
             }
         }
 
-        // ДВИЖЕНИЕ (ТЕХНОЛОГИЯ BAD GUY)
-        if (Date.now() - lastMove >= 500) {
+        // ДВИЖЕНИЕ (ТЕПЕРЬ ТОЧНО ТАКОЕ ЖЕ, КАК У ФИДЕРА)
+        if (Date.now() - lastMove >= 100) { // Интервал 100мс (очень быстро, как у фидера)
             lastMove = Date.now();
             const isRadiant = LocalPlayer.Team === 2;
             
@@ -179,7 +189,7 @@ EventsSDK.on("PostDataUpdate", () => {
                 return;
             }
 
-            // 2. ЦИКЛ
+            // 2. ВЫБОР ЛИНИИ (ТВОЯ СХЕМА)
             let target = new Vector3(0,0,0);
 
             if (Me.Level < 2) { 
@@ -194,13 +204,14 @@ EventsSDK.on("PostDataUpdate", () => {
                 target.y += (Math.random() * 1000 - 500);
             }
 
+            // Рандом в точке
             if (Me.Level < 10) {
                 target.x += (Math.random() * 300 - 150);
                 target.y += (Math.random() * 300 - 150);
             }
 
             try {
-                // ВОТ ОНО - ТО ЖЕ САМОЕ, ЧТО И В ФИДЕ
+                // ИСПОЛЬЗУЕМ МЕТОД ФИДЕРА ДЛЯ БОТА
                 // @ts-ignore
                 ExecuteOrder.HoldOrdersTarget = target;
                 // @ts-ignore
