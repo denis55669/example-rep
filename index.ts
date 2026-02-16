@@ -71,3 +71,80 @@ EventsSDK.on("PostDataUpdate", () => {
 });
 
 console.log("Feed Script: Lite Version Loaded");
+import {
+    EventsSDK,
+    LocalPlayer,
+    Menu,
+    Vector3,
+    Unit,
+    ExecuteOrder // Нам знадобиться для швидкого перемикання
+} from "github.com/octarine-public/wrapper/index"
+
+// --- МЕНЮ ---
+// Якщо ти додаєш це в існуючий файл, цей рядок (Main) вже є, не дублюй його!
+// Якщо робиш з нуля - розкоментуй:
+// const Main = Menu.AddEntry("best cheat octorine", "panorama/images/items/aegis_png.vtex_c");
+
+// Якщо Main вже є вище, просто додаємо нову вкладку
+// @ts-ignore (Ігноруємо помилку, якщо Main оголошено в іншій частині файлу)
+const ArmletTab = Main.AddNode("Armlet Abuse");
+
+const EnableArmlet = ArmletTab.AddToggle("1. Увімкнути Абуз", true);
+const Threshold = ArmletTab.AddSlider("2. Поріг HP (Коли перемикати)", 350, 100, 1000, 10);
+const Delay = ArmletTab.AddSlider("3. Затримка (Ping Fix)", 50, 10, 200, 10);
+
+let lastToggle = 0;
+let isRecharging = false; // Стан: ми вимкнули і чекаємо включення?
+
+EventsSDK.on("PostDataUpdate", () => {
+    const Me = LocalPlayer?.Hero;
+    if (!Me || !Me.IsAlive) return;
+
+    // Якщо скрипт вимкнено - нічого не робимо
+    if (!EnableArmlet.value) return;
+
+    // Знаходимо Армлет (шукаємо в усіх слотах)
+    const armlet = GetItem(Me, "item_armlet");
+    if (!armlet) return; // Немає армлета - виходимо
+
+    const now = Date.now();
+    // Чи включений Армлет зараз?
+    // @ts-ignore
+    const isArmletActive = armlet.IsToggled; 
+
+    // --- ЛОГІКА АБУЗУ ---
+
+    // 1. Якщо HP впало нижче порогу, і Армлет ВКЛЮЧЕНИЙ -> ВИМИКАЄМО
+    if (Me.Health < Threshold.value && isArmletActive && !isRecharging) {
+        if (now - lastToggle > 300) { // Захист від спаму
+            // @ts-ignore
+            armlet.CastNoTarget(); // Вимикаємо
+            isRecharging = true;   // Ставимо прапорець "Заряджаємося"
+            lastToggle = now;
+        }
+    }
+
+    // 2. Якщо ми у стані "Зарядка" (вимкнули) -> ВМИКАЄМО НАЗАД
+    if (isRecharging && !isArmletActive) {
+        // Чекаємо мікро-паузу (залежить від пінгу), щоб сервер зарахував вимкнення
+        if (now - lastToggle >= Delay.value) {
+            // @ts-ignore
+            armlet.CastNoTarget(); // Вмикаємо
+            isRecharging = false;  // Готово
+            lastToggle = now;
+        }
+    }
+});
+
+// --- ДОПОМІЖНА ФУНКЦІЯ ---
+function GetItem(unit: Unit, itemName: string): any {
+    // Шукаємо тільки в активних слотах (0-5)
+    for (let i = 0; i <= 5; i++) {
+        const item = unit.GetItemInSlot(i);
+        // @ts-ignore
+        if (item && item.Name === itemName) return item;
+    }
+    return null;
+}
+
+console.log("Armlet God Loaded!");
