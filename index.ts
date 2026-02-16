@@ -20,7 +20,7 @@ const EnableBot = BotNode.AddToggle("Enable Movement", false);
 const AutoSkill = BotNode.AddToggle("Auto Level Skills (Sven 2nd)", true);
 const AutoItems = BotNode.AddToggle("Auto Buy Items", true);
 
-// --- ГЛИБОКІ КООРДИНАТИ ---
+// --- КООРДИНАТИ (Глибокі нички) ---
 const RAD_SPOTS = {
     BOT_XP: new Vector3(6600, -6600, 256),  
     BOT_LANE: new Vector3(6200, -5800, 256), 
@@ -45,24 +45,24 @@ EventsSDK.on("PostDataUpdate", () => {
     const Me = LocalPlayer?.Hero;
     if (!Me || !Me.IsAlive) return;
 
-    // ==========================================
-    // ГОЛОВНИЙ ВИМИКАЧ (KILL-SWITCH)
-    // ==========================================
+    // ==================================================
+    // АБСОЛЮТНИЙ ВИМИКАЧ (ВИДАЛЯЄ РОБОТА ПІСЛЯ 10 ЛВЛ)
+    // ==================================================
     if (Me.Level >= 10) {
         if (EnableBot.value) {
-            EnableBot.value = false; // Вимикаємо галку в меню
-            console.log("Level 10 reached. Bot disabled.");
+            EnableBot.value = false; // Вимикаємо візуально
         }
-        return; // Повністю зупиняємо логіку
+        return; // Виходимо з функції, нічого не виконуємо
     }
 
     if (!EnableBot.value) return;
     const now = Date.now();
 
-    // 1. ПРОКАЧКА СВЕНА (2-Й СКІЛ)
+    // 1. ПРОКАЧКА СВЕНА (2-Й СКІЛ ПРІОРИТЕТ)
     if (AutoSkill.value && Me.AbilityPoints > 0 && !Sleeper.Sleeping("skill_up")) {
         const cleave = Me.GetAbilityByName("sven_great_cleave");
-        const targetAbility = (cleave && cleave.CanLevelUp) ? cleave : Me.GetAbilityByName("sven_storm_bolt");
+        const hammer = Me.GetAbilityByName("sven_storm_bolt");
+        const targetAbility = (cleave && cleave.CanLevelUp) ? cleave : hammer;
         if (targetAbility) {
             // @ts-ignore
             Me.UpgradeAbility(targetAbility);
@@ -83,14 +83,14 @@ EventsSDK.on("PostDataUpdate", () => {
         }
     }
 
-    // 3. ЛОГІКА РУХУ (ЦИКЛ 1/1 РІВЕНЬ)
+    // 3. РУХ (ЦИКЛ 1/1 РІВЕНЬ)
     if (now - lastMoveTick >= 3000) {
         lastMoveTick = now;
         const isRadiant = LocalPlayer.Team === 2;
         const spots = isRadiant ? RAD_SPOTS : DIRE_SPOTS;
         
         let target: Vector3;
-        const isHideLevel = (Me.Level % 2 !== 0); // 1, 3, 5, 7, 9 - Ховаємось
+        const isHideLevel = (Me.Level % 2 !== 0); // Непарні: 1, 3, 5, 7, 9
 
         if (Me.Level < 2) {
             target = isHideLevel ? spots.BOT_XP.Clone() : spots.BOT_LANE.Clone();
@@ -100,21 +100,18 @@ EventsSDK.on("PostDataUpdate", () => {
             target = isHideLevel ? spots.TOP_XP.Clone() : spots.TOP_LANE.Clone();
         }
 
-        // Рандом для безпалевності
         target.x += (Math.random() * 200 - 100);
         target.y += (Math.random() * 200 - 100);
 
         try {
+            // @ts-ignore
+            ExecuteOrder.HoldOrdersTarget = target;
             if (!isHideLevel) {
-                // РЕЖИМ АТАКИ: Виходимо і б'ємо кріпів (Attack Move)
-                // @ts-ignore
-                ExecuteOrder.HoldOrdersTarget = target;
+                // ПАРНИЙ РІВЕНЬ: Атака кріпів
                 // @ts-ignore
                 Me.Attack(target); 
             } else {
-                // РЕЖИМ ХОВАНКИ: Прямо в кущі з байпасом
-                // @ts-ignore
-                ExecuteOrder.HoldOrdersTarget = target;
+                // НЕПАРНИЙ РІВЕНЬ: Сидимо в кущах
                 // @ts-ignore
                 Me.MoveTo(target, false, true); 
             }
