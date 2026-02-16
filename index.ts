@@ -20,10 +20,10 @@ Menu.Localization.AddLocalizationUnit("english", new Map([
     ["run_radiant", "1. Feed RADIANT"],
     ["run_dire", "2. Feed DIRE"],
     ["fast_feed", "3. Fast Feed"],
-    ["boost_node", "Smart Hour Booster (V59)"],
+    ["boost_node", "Smart Bot (V59 Logic)"],
     ["enable_smart", "Enable Smart XP Farm"],
     ["auto_accept", "Auto Accept Match"],
-    ["auto_queue", "Auto Find Match"],
+    ["auto_queue", "Auto Find (Press Button)"],
     ["auto_items", "Auto Buy (PT -> BF -> MoM)"],
     ["auto_skill", "Auto Level Up Skills"]
 ]));
@@ -33,10 +33,10 @@ Menu.Localization.AddLocalizationUnit("russian", new Map([
     ["run_radiant", "1. Фид RADIANT"],
     ["run_dire", "2. Фид DIRE"],
     ["fast_feed", "3. Быстрый фид"],
-    ["boost_node", "Умный Буст Часов (V59)"],
+    ["boost_node", "Смарт Бот (Логика V59)"],
     ["enable_smart", "Включить Умный Фарм"],
     ["auto_accept", "Авто-принятие игры"],
-    ["auto_queue", "Авто-Поиск"],
+    ["auto_queue", "Авто-Поиск (Жмет кнопку)"],
     ["auto_items", "Авто-закуп (ПТ -> БФ -> МОМ)"],
     ["auto_skill", "Авто-прокачка скиллов"]
 ]));
@@ -44,22 +44,26 @@ Menu.Localization.AddLocalizationUnit("russian", new Map([
 // --- МЕНЮ ---
 const UtilityEntry = Menu.AddEntry("Utility");
 
-// 1. BAD GUY (ФИДЕР)
+// 1. BAD GUY (ТВОЙ ФИДЕР)
 const BadGuyNode = UtilityEntry.AddNode("Bad Guy", "panorama/images/items/shadow_amulet_png.vtex_c");
 const FeedNode = BadGuyNode.AddNode("feed_node", "panorama/images/spellicons/skeleton_king_reincarnation_png.vtex_c");
 const RunToRadiant = FeedNode.AddToggle("run_radiant", false);
 const RunToDire = FeedNode.AddToggle("run_dire", false);
 const FastFeed = FeedNode.AddToggle("fast_feed", true);
 
-// 2. SMART BOOSTER (V59 + ITEMS)
+// 2. SMART BOOSTER (ТВОЙ БОТ + УЛУЧШЕНИЯ)
 const BoostNode = UtilityEntry.AddNode("boost_node", "panorama/images/items/tome_of_knowledge_png.vtex_c");
 const EnableSmart = BoostNode.AddToggle("enable_smart", false);
 const AutoAccept = BoostNode.AddToggle("auto_accept", true);
-const AutoQueue = BoostNode.AddToggle("auto_queue", true); // Добавил кнопку
-const AutoItems = BoostNode.AddToggle("auto_items", true); // Добавил кнопку
-const AutoSkill = BoostNode.AddToggle("auto_skill", true); // Добавил кнопку
+const AutoQueue = BoostNode.AddToggle("auto_queue", true); // Добавил
+const AutoItems = BoostNode.AddToggle("auto_items", true); // Добавил
+const AutoSkill = BoostNode.AddToggle("auto_skill", true); // Добавил
 
-// --- КООРДИНАТЫ ИЗ V59 (ТОЧНЫЕ) ---
+// --- КООРДИНАТЫ ФИДЕРА ---
+const BASE_RADIANT = new Vector3(-7200, -6600, 384);
+const BASE_DIRE = new Vector3(7200, 6500, 384);
+
+// --- КООРДИНАТЫ БОТА (V59) ---
 const RAD_BOT_XP = new Vector3(5800, -5200, 256);
 const RAD_MID_XP = new Vector3(-600, -400, 256);
 const RAD_TOP_XP = new Vector3(-5800, 5000, 256);
@@ -70,21 +74,17 @@ const DIRE_MID_XP = new Vector3(400, 200, 256);
 const DIRE_TOP_XP = new Vector3(-4500, 5800, 256);
 const DIRE_JUNGLE = new Vector3(4000, 3000, 256);
 
-// Координаты Фидера
-const BASE_RADIANT = new Vector3(-7200, -6600, 384);
-const BASE_DIRE = new Vector3(7200, 6500, 384);
-
-let lastMoveTick = 0;
-let lastFeedTick = 0;
+let lastFeedTick = 0; // Таймер для Фида (100мс)
+let lastBotTick = 0;  // Таймер для Бота (3000мс)
 
 EventsSDK.on("PostDataUpdate", () => {
-    // 1. АВТО-ПРИНЯТИЕ
+    // 1. АВТО-ПРИНЯТИЕ (Работает всегда)
     if (AutoAccept.value && GameState.IsMatchFound && !GameState.HasAccepted) {
         EventsSDK.ExecuteCommand("dota_accept_match");
         return;
     }
 
-    // 2. АВТО-ПОИСК (Аккуратно, без спама)
+    // 2. АВТО-ПОИСК (Работает если включен Смарт Бот)
     if (EnableSmart.value && AutoQueue.value) {
         if (!GameState.IsInGame && !GameState.IsSearching && !GameState.IsMatchFound) {
             if (!Sleeper.Sleeping("queue")) {
@@ -99,14 +99,15 @@ EventsSDK.on("PostDataUpdate", () => {
     const now = Date.now();
 
     // ==========================================
-    // ЛОГИКА 1: ФИДЕР (ПРИОРИТЕТ)
+    // ЛОГИКА 1: ФИДЕР (Priority High)
     // ==========================================
     if (RunToRadiant.value || RunToDire.value) {
         let target = RunToRadiant.value ? BASE_RADIANT.Clone() : BASE_DIRE.Clone();
-        
+
+        // Blinks & Skills
         if (FastFeed.value && !Sleeper.Sleeping("blink") && Me.Distance(target) > 800) {
             const blinkSkill = Me.GetAbilityByName("antimage_blink") || Me.GetAbilityByName("queenofpain_blink") || Me.GetAbilityByName("faceless_void_time_walk");
-            const blinkItem = Me.GetItemByName("item_blink");
+            const blinkItem = Me.GetItemByName("item_blink") || Me.GetItemByName("item_overwhelming_blink") || Me.GetItemByName("item_swift_blink") || Me.GetItemByName("item_arcane_blink");
             const activeBlink = (blinkSkill && blinkSkill.CanBeCasted()) ? blinkSkill : (blinkItem && blinkItem.CanBeCasted()) ? blinkItem : null;
             if (activeBlink) {
                 // @ts-ignore
@@ -115,6 +116,7 @@ EventsSDK.on("PostDataUpdate", () => {
             }
         }
 
+        // Movement (100ms interval)
         if (now - lastFeedTick >= 100) {
             lastFeedTick = now;
             target.x += (Math.random() * 800 - 400);
@@ -129,15 +131,15 @@ EventsSDK.on("PostDataUpdate", () => {
                 Me.MoveTo(target);
             }
         }
-        return; 
+        return; // Если фидим - бот не работает
     }
 
     // ==========================================
-    // ЛОГИКА 2: СМАРТ БОТ (V59 СТРОГО)
+    // ЛОГИКА 2: СМАРТ БОТ (V59 Logic)
     // ==========================================
     if (EnableSmart.value) {
-
-        // --- ДОБАВКИ: ЗАКУП И СКИЛЛЫ ---
+        
+        // --- УЛУЧШЕНИЯ: СКИЛЛЫ И ПРЕДМЕТЫ ---
         if (AutoSkill.value && Me.AbilityPoints > 0 && !Sleeper.Sleeping("skill")) {
             const abilities = Me.Abilities.filter(a => a.CanLevelUp);
             if (abilities.length > 0) {
@@ -162,14 +164,14 @@ EventsSDK.on("PostDataUpdate", () => {
             }
         }
 
-        // --- ДВИЖЕНИЕ (ОРИГИНАЛ V59) ---
-        if (now - lastMoveTick >= 3000) { // Таймер 3 секунды, как было
-            lastMoveTick = now;
+        // --- ДВИЖЕНИЕ ИЗ V59 (3000ms interval) ---
+        if (now - lastBotTick >= 3000) {
+            lastBotTick = now;
             
             const isRadiant = LocalPlayer.Team === 2;
             let target = new Vector3(0, 0, 0);
 
-            // ЗАЩИТА ТРОНА (ЕДИНСТВЕННОЕ ВАЖНОЕ ДОБАВЛЕНИЕ)
+            // ЗАЩИТА ТРОНА (ЕДИНСТВЕННОЕ ВАЖНОЕ ДОБАВЛЕНИЕ В ДВИЖЕНИЕ)
             const ancient = EntityManager.GetEntitiesByClass("npc_dota_fortress").find(e => e.IsMyTeam);
             // @ts-ignore
             if (ancient && ancient.HealthPercent < 100) {
@@ -178,7 +180,7 @@ EventsSDK.on("PostDataUpdate", () => {
                 return;
             }
 
-            // ЛОГИКА V59
+            // ЛОГИКА КООРДИНАТ V59
             if (Me.Level < 2) {
                 target = isRadiant ? RAD_BOT_XP.Clone() : DIRE_BOT_XP.Clone();
             } else if (Me.Level >= 2 && Me.Level < 6) {
@@ -197,11 +199,11 @@ EventsSDK.on("PostDataUpdate", () => {
             }
 
             try {
-                // ТОТ ЖЕ МЕТОД, ЧТО РАБОТАЛ У ТЕБЯ
+                // МЕТОД ДВИЖЕНИЯ ИЗ V59
                 // @ts-ignore
                 ExecuteOrder.HoldOrdersTarget = target;
                 // @ts-ignore
-                Me.MoveTo(target, false, true); 
+                Me.MoveTo(target, false, true);
             } catch (e) {
                 // @ts-ignore
                 Me.MoveTo(target);
