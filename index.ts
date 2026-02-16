@@ -3,111 +3,100 @@ import {
     LocalPlayer,
     Menu,
     Vector3,
-    EntityManager,
     Unit
 } from "github.com/octarine-public/wrapper/index"
 
-// --- ГЛОБАЛЬНІ ЗМІННІ З OCTARINE-CORE ---
-// Оголошуємо доступ до пам'яті та функції наказів
-declare var IOBuffer: Float32Array;
-declare function PrepareUnitOrders(obj: {
-    OrderType: number,
-    Target?: number,
-    Ability?: number,
-    Issuers?: number[] | number,
-    Queue?: boolean,
-    ShowEffects?: boolean,
-    Flags?: number
-}): void;
-
 // --- МЕНЮ ---
-const Main = Menu.AddEntry("Grief Lord V33", "panorama/images/items/divine_rapier_png.vtex_c");
-const RunDire = Main.AddToggle("1. БІГТИ ВГОРУ (Dire)", false);
-const RunRadiant = Main.AddToggle("2. БІГТИ ВНИЗ (Radiant)", false);
-const FeedAll = Main.AddToggle("3. ФІД ВСІМА (Герой + Кури + Тіммейти)", false);
+const Main = Menu.AddEntry("Sonic Feeder V34", "panorama/images/items/travel_boots_png.vtex_c");
 
-const DOTA_UNIT_ORDER_MOVE_TO_POSITION = 5;
-let lastTick = 0;
+const RunDire = Main.AddToggle("1. Бежать в DIRE (Вверх)", false);
+const RunRadiant = Main.AddToggle("2. Бежать в RADIANT (Вниз)", false);
+const AutoBuy = Main.AddToggle("3. Авто-закуп (Тапок/Смоки/Травела)", true);
+
+let lastMove = 0;
+let lastBuy = 0;
+
+// Координаты фонтанов (Точные центры)
+const POS_DIRE = new Vector3(7200, 6500, 384);
+const POS_RADIANT = new Vector3(-7200, -6600, 384);
 
 EventsSDK.on("PostDataUpdate", () => {
     const Me = LocalPlayer?.Hero;
     if (!Me || !Me.IsAlive) return;
 
     const now = Date.now();
-    if (now - lastTick < 250) return; // 4 рази на секунду
-    lastTick = now;
 
-    // 1. ВИЗНАЧАЄМО ЦІЛЬ
-    let target: Vector3 | null = null;
-    if (RunRadiant.value) target = new Vector3(-7200, -6600, 384);
-    else if (RunDire.value) target = new Vector3(7200, 6500, 384);
+    // --- 1. АВТО-ЗАКУП И ИСПОЛЬЗОВАНИЕ ПРЕДМЕТОВ (Раз в 1 сек) ---
+    if (AutoBuy.value && now - lastBuy > 1000) {
+        lastBuy = now;
 
-    if (!target) return;
+        // Покупаем предметы, если мы в магазине (обычно на респауне)
+        if (Me.IsShopOpen) {
+            // 1. Покупаем Тапок (если нет ни тапка, ни травелов)
+            if (!HasItem(Me, "item_boots") && !HasItem(Me, "item_travel_boots") && !HasItem(Me, "item_travel_boots_2")) {
+                EventsSDK.ExecuteCommand("dota_purchase_item item_boots");
+            }
 
-    // Рандом
-    target.x += (Math.random() * 200 - 100);
-    target.y += (Math.random() * 200 - 100);
+            // 2. Покупаем Смоки (Всегда, если есть деньги)
+            // Смоки дают скорость и инвиз от крипов
+            EventsSDK.ExecuteCommand("dota_purchase_item item_smoke_of_deceit");
 
-    // 2. БЕЗПЕЧНИЙ ФІД ГЕРОЄМ (V24 Style - Працює 100%)
-    if (FeedAll.value) {
-        try {
-            // @ts-ignore
-            Me.MoveTo(target); 
-        } catch (e) {}
+            // 3. Апгрейд в Травела (Если накопили)
+            if (Me.Gold > 2000) {
+                 EventsSDK.ExecuteCommand("dota_purchase_item item_travel_boots");
+            }
+        }
+
+        // --- АВТО-ИСПОЛЬЗОВАНИЕ СМОКОВ ---
+        const smoke = GetItem(Me, "item_smoke_of_deceit");
+        if (smoke && smoke.CanCast) {
+            // Юзаем смок, чтобы быстрее бежать
+            smoke.CastNoTarget();
+        }
     }
 
-    // 3. МАСОВИЙ НАКАЗ ЧЕРЕЗ IOBuffer (Для Кур та Тіммейтів)
-    if (FeedAll.value) {
-        const issuers: number[] = [];
+    // --- 2. ДВИЖЕНИЕ (Постоянный спам) ---
+    // Спамим часто (раз в 100 мс), чтобы перебивать любые попытки остановки
+    if (now - lastMove < 100) return;
+    lastMove = now;
 
-        // Збираємо Кур'єрів
-        const couriers = EntityManager.GetEntitiesByClass("npc_dota_courier");
-        for (const cour of couriers) {
-            // @ts-ignore
-            if (cour.IsAlive && cour.IsMyTeam) {
-                // @ts-ignore
-                issuers.push(cour.Handle); // Додаємо Handle юніта
-            }
-        }
+    let target: Vector3 | null = null;
+    
+    // Выбираем базу
+    if (RunDire.value) target = new Vector3(POS_DIRE.x, POS_DIRE.y, POS_DIRE.z);
+    else if (RunRadiant.value) target = new Vector3(POS_RADIANT.x, POS_RADIANT.y, POS_RADIANT.z);
 
-        // Збираємо Тіммейтів (Окрім себе)
-        const heroes = EntityManager.GetEntitiesByClass("npc_dota_hero_*");
-        for (const hero of heroes) {
-            // @ts-ignore
-            if (hero.IsAlive && hero.IsMyTeam && !hero.IsMe) {
-                // @ts-ignore
-                issuers.push(hero.Handle);
-            }
-        }
+    if (target) {
+        // --- ГЛАВНАЯ ФИШКА: РАНДОМНЫЕ ТОЧКИ ВНУТРИ ФОНТАНА ---
+        // Добавляем случайный разброс +/- 800 единиц.
+        // Это заставляет героя забегать в фонтан с разных сторон.
+        target.x += (Math.random() * 1600 - 800);
+        target.y += (Math.random() * 1600 - 800);
 
-        // ЯКЩО Є КОМУ БІГТИ - ВИКОНУЄМО МАГІЮ
-        if (issuers.length > 0) {
-            try {
-                // КРОК 1: Записуємо координати в IOBuffer (Offset 0)
-                // IOBuffer - це масив чисел float.
-                // 0 = X, 1 = Y, 2 = Z
-                if (typeof IOBuffer !== 'undefined') {
-                    IOBuffer[0] = target.x;
-                    IOBuffer[1] = target.y;
-                    IOBuffer[2] = target.z;
-
-                    // КРОК 2: Викликаємо функцію без координат (вона візьме їх з буфера)
-                    PrepareUnitOrders({
-                        OrderType: DOTA_UNIT_ORDER_MOVE_TO_POSITION,
-                        Issuers: issuers, // Масив юнітів
-                        Queue: false,
-                        ShowEffects: true
-                    });
-                    
-                    // console.log(`Sent IOBuffer Order to ${issuers.length} units`);
-                } else {
-                    console.log("Error: IOBuffer not found!");
-                }
-            } catch (e) {
-                console.log("Memory Access Failed");
-            }
-        }
+        // @ts-ignore
+        Me.MoveTo(target);
     }
 });
 
-console.log("Grief Lord V33: Memory Write Loaded!");
+// Вспомогательная функция: Проверка наличия предмета
+function HasItem(unit: Unit, itemName: string): boolean {
+    // Проверяем инвентарь (0-5) и рюкзак (6-8)
+    for (let i = 0; i <= 8; i++) {
+        const item = unit.GetItemInSlot(i);
+        // @ts-ignore
+        if (item && item.Name === itemName) return true;
+    }
+    return false;
+}
+
+// Вспомогательная функция: Получить предмет (чтобы юзнуть)
+function GetItem(unit: Unit, itemName: string): any {
+    for (let i = 0; i <= 5; i++) { // Только активные слоты
+        const item = unit.GetItemInSlot(i);
+        // @ts-ignore
+        if (item && item.Name === itemName) return item;
+    }
+    return null;
+}
+
+console.log("Sonic Feeder V34 Loaded!");
