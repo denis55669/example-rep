@@ -15,7 +15,7 @@ const Sleeper = new TickSleeper();
 
 // --- МЕНЮ ---
 const UtilityEntry = Menu.AddEntry("Utility");
-const BotNode = UtilityEntry.AddNode("Smart Bot V104", "panorama/images/items/tome_of_knowledge_png.vtex_c");
+const BotNode = UtilityEntry.AddNode("Smart Bot V105", "panorama/images/items/tome_of_knowledge_png.vtex_c");
 
 const EnableBot = BotNode.AddToggle("Enable Movement", true);
 const AutoSkill = BotNode.AddToggle("Auto Skills (Spam)", true);
@@ -47,7 +47,7 @@ let lastMoveTick = 0;
 let quickbuyDone = false;
 
 EventsSDK.on("PostDataUpdate", () => {
-    // 1. АВТО-ПОШУК ТА ПРИЙНЯТТЯ
+    // 1. АВТО-ПОШУК
     if (AutoQueue.value) {
         if (GameState.IsMatchFound && !GameState.HasAccepted) {
             EventsSDK.ExecuteCommand("dota_accept_match");
@@ -72,18 +72,19 @@ EventsSDK.on("PostDataUpdate", () => {
     if (!Me || !Me.IsAlive) return;
 
     // 2. АВТО-СТАРТ (0:00)
+    // Вмикаємо бота, якщо рівень менше 2
     if (Me.Level < 2 && GameRules && GameRules.GameTime < 60) {
         if (!EnableBot.value) EnableBot.value = true;
     }
 
-    // 3. СТОП НА 6 РІВНІ (ОНОВЛЕНО)
+    // 3. СТОП НА 6 РІВНІ (ЗМІНЕНО з 10 на 6)
     if (Me.Level >= 6) {
         if (EnableBot.value) {
-            EnableBot.value = false; // Вимикаємо
+            EnableBot.value = false;
             console.log("Level 6 reached. Bot Stopped.");
         }
         
-        // 10 Смертей = Ліс (на всяк випадок, хоча на 6 рівні він вже вимкнеться)
+        // 10 Смертей = Ліс
         // @ts-ignore
         if (Me.Deaths >= 10 && (Date.now() - lastMoveTick >= 3000)) {
             lastMoveTick = Date.now();
@@ -97,7 +98,7 @@ EventsSDK.on("PostDataUpdate", () => {
 
     if (!EnableBot.value) return;
 
-    // 4. QUICKBUY (Раз на гру)
+    // 4. QUICKBUY
     if (!quickbuyDone) {
         EventsSDK.ExecuteCommand("dota_shop_force_assign_quickbuy item_power_treads");
         EventsSDK.ExecuteCommand("dota_shop_item_add_to_quickbuy item_bfury");
@@ -105,7 +106,7 @@ EventsSDK.on("PostDataUpdate", () => {
         quickbuyDone = true;
     }
 
-    // 5. ПРОКАЧКА (SPAM MODE)
+    // 5. ПРОКАЧКА
     if (AutoSkill.value && Me.AbilityPoints > 0 && !Sleeper.Sleeping("skill_up")) {
         let ability = null;
         if (Me.UnitName === "npc_dota_hero_sven") {
@@ -134,7 +135,7 @@ EventsSDK.on("PostDataUpdate", () => {
         }
     }
 
-    // 6. АВТО-КАСТ (ВИПРАВЛЕНО СИНТАКСИС)
+    // 6. АВТО-КАСТ
     if (AutoCast.value && !Sleeper.Sleeping("cast_spell")) {
         const spells = Me.Abilities.filter(a => 
             (a.Name.includes("warcry") || a.Name.includes("anchor_smash") || a.Name.includes("gods_strength") || a.Name.includes("ravage")) 
