@@ -7,212 +7,118 @@ import {
     ExecuteOrder,
     TickSleeper,
     GameState,
-    EntityManager,
-    Ability
+    GameRules,
+    PlayerCustomData
 } from "github.com/octarine-public/wrapper/index"
 
 const Sleeper = new TickSleeper();
 
 // --- ЛОКАЛИЗАЦИЯ ---
 Menu.Localization.AddLocalizationUnit("english", new Map([
-    ["feed_node", "Feed (Original V53)"],
-    ["run_radiant", "1. Feed RADIANT"],
-    ["run_dire", "2. Feed DIRE"],
-    ["fast_feed", "3. Fast Feed"],
-    ["boost_node", "Smart Bot (Hybrid Move)"],
-    ["enable_smart", "Enable Smart Farm"],
+    ["boost_node", "Smart Hour Booster"],
+    ["enable_smart", "Enable Smart XP Farm"],
     ["auto_accept", "Auto Accept Match"],
-    ["auto_queue", "Auto Find (Button Press)"],
-    ["auto_items", "Auto Buy (PT -> BF -> MoM)"],
-    ["auto_skill", "Auto Level Up Skills"]
+    ["auto_pick", "Auto Pick (Bounty Hunter/Riki)"]
 ]));
 
 Menu.Localization.AddLocalizationUnit("russian", new Map([
-    ["feed_node", "Фид (Оригинал V53)"],
-    ["run_radiant", "1. Фид RADIANT"],
-    ["run_dire", "2. Фид DIRE"],
-    ["fast_feed", "3. Быстрый фид"],
-    ["boost_node", "Смарт Бот (Гибрид)"],
-    ["enable_smart", "Включить Умный Фарм"],
+    ["boost_node", "Умный Буст Часов"],
+    ["enable_smart", "Включить Умный Фарм (XP)"],
     ["auto_accept", "Авто-принятие игры"],
-    ["auto_queue", "Авто-Поиск (Жмет кнопку)"],
-    ["auto_items", "Авто-закуп (ПТ -> БФ -> МОМ)"],
-    ["auto_skill", "Авто-прокачка скиллов"]
+    ["auto_pick", "Авто-пик (BH/Riki/Sniper)"]
 ]));
 
-// --- МЕНЮ ---
 const UtilityEntry = Menu.AddEntry("Utility");
-
-// 1. BAD GUY (ТВОЙ РАБОЧИЙ КОД 100%)
-const BadGuyNode = UtilityEntry.AddNode("Bad Guy", "panorama/images/items/shadow_amulet_png.vtex_c");
-const FeedNode = BadGuyNode.AddNode("feed_node", "panorama/images/spellicons/skeleton_king_reincarnation_png.vtex_c");
-const RunToRadiant = FeedNode.AddToggle("run_radiant", false);
-const RunToDire = FeedNode.AddToggle("run_dire", false);
-const FastFeed = FeedNode.AddToggle("fast_feed", true);
-
-// 2. SMART BOOSTER (БОТ)
 const BoostNode = UtilityEntry.AddNode("boost_node", "panorama/images/items/tome_of_knowledge_png.vtex_c");
+
 const EnableSmart = BoostNode.AddToggle("enable_smart", false);
 const AutoAccept = BoostNode.AddToggle("auto_accept", true);
-const AutoQueue = BoostNode.AddToggle("auto_queue", true);
-const AutoItems = BoostNode.AddToggle("auto_items", true);
-const AutoSkill = BoostNode.AddToggle("auto_skill", true);
+const AutoPick = BoostNode.AddToggle("auto_pick", true);
 
-// --- КООРДИНАТЫ БАЗ (ФИД) ---
-const BASE_RADIANT = new Vector3(-7200, -6600, 384);
-const BASE_DIRE = new Vector3(7200, 6500, 384);
-
-// --- КООРДИНАТЫ ДЛЯ БОТА (ИСПРАВЛЕННЫЕ - НА ЗЕМЛЕ) ---
+// Координати "нычек" в деревьях (примерные, безопасные зоны)
 // Radiant
-const RAD_BOT = new Vector3(5800, -5800, 256); // Safe Lane (Ground)
-const RAD_MID = new Vector3(-500, -500, 256);  // Mid (Ground)
-const RAD_TOP = new Vector3(-5800, 5800, 256); // Hard (Ground)
-const RAD_JUNGLE = new Vector3(1000, -4000, 256);
+const RAD_BOT_XP = new Vector3(5800, -5200, 256); // Radiant Safe Lane Trees
+const RAD_MID_XP = new Vector3(-600, -400, 256);  // Radiant Mid Trees
+const RAD_TOP_XP = new Vector3(-5800, 5000, 256); // Radiant Offlane Trees
+const RAD_JUNGLE = new Vector3(1000, -4000, 256); // Radiant Triangle/Jungle
 
 // Dire
-const DIRE_BOT = new Vector3(5800, -5800, 256); // Hard (Ground)
-const DIRE_MID = new Vector3(500, 500, 256);    // Mid (Ground)
-const DIRE_TOP = new Vector3(-5800, 5800, 256); // Safe (Ground)
-const DIRE_JUNGLE = new Vector3(4000, 3000, 256);
+const DIRE_BOT_XP = new Vector3(6000, -4500, 256); // Dire Offlane Trees
+const DIRE_MID_XP = new Vector3(400, 200, 256);    // Dire Mid Trees
+const DIRE_TOP_XP = new Vector3(-4500, 5800, 256); // Dire Safe Lane Trees
+const DIRE_JUNGLE = new Vector3(4000, 3000, 256);  // Dire Jungle
 
-let lastTick = 0; 
-let lastBotTick = 0;
+let lastMoveTick = 0;
 
 EventsSDK.on("PostDataUpdate", () => {
+    if (!EnableSmart.value) return;
+    const now = Date.now();
+
     // 1. АВТО-ПРИНЯТИЕ
     if (AutoAccept.value && GameState.IsMatchFound && !GameState.HasAccepted) {
         EventsSDK.ExecuteCommand("dota_accept_match");
-        return;
     }
 
-    // 2. АВТО-ПОИСК
-    if (EnableSmart.value && AutoQueue.value) {
-        if (!GameState.IsInGame && !GameState.IsSearching && !GameState.IsMatchFound) {
-            if (!Sleeper.Sleeping("queue_spam")) {
-                EventsSDK.ExecuteCommand("dota_match_find_match");
-                Sleeper.Sleep(5000, "queue_spam");
-            }
+    // 2. АВТО-ПИК (Лучше всего Bounty Hunter или Riki для инвиза, но ставим Sniper как базу)
+    if (AutoPick.value && GameRules && GameRules.GameState === 20) { 
+        if (!Sleeper.Sleeping("pick_hero")) {
+            // Пытаемся пикнуть Рики или БХ для инвиза (чтобы не умирать)
+            EventsSDK.ExecuteCommand("dota_select_hero npc_dota_hero_riki"); 
+            EventsSDK.ExecuteCommand("dota_select_hero npc_dota_hero_bounty_hunter");
+            EventsSDK.ExecuteCommand("dota_select_hero npc_dota_hero_sniper"); // Резерв
+            Sleeper.Sleep(3000, "pick_hero");
         }
     }
 
     const Me = LocalPlayer?.Hero;
     if (!Me || !Me.IsAlive) return;
-    const now = Date.now();
 
-    // ==========================================
-    // ЛОГИКА 1: ФИДЕР (ТВОЙ КОД)
-    // ==========================================
-    if (RunToRadiant.value || RunToDire.value) {
-        let target = RunToRadiant.value ? BASE_RADIANT.Clone() : BASE_DIRE.Clone();
+    // Двигаемся раз в 3 секунды, чтобы имитировать активность
+    if (now - lastMoveTick >= 3000) {
+        lastMoveTick = now;
+        
+        const isRadiant = LocalPlayer.Team === 2;
+        let target = new Vector3(0, 0, 0);
 
-        if (FastFeed.value && !Sleeper.Sleeping && Me.Distance(target) > 800) {
-            const blinkSkill = Me.GetAbilityByName("antimage_blink") || Me.GetAbilityByName("queenofpain_blink") || Me.GetAbilityByName("faceless_void_time_walk");
-            const blinkItem = Me.GetItemByName("item_blink");
-            const activeBlink = (blinkSkill && blinkSkill.CanBeCasted()) ? blinkSkill : (blinkItem && blinkItem.CanBeCasted()) ? blinkItem : null;
-            if (activeBlink) {
-                // @ts-ignore
-                Me.CastPosition(activeBlink, Me.Position.Extend(target, 1150));
-                Sleeper.Sleep(400); 
-            }
+        // --- ЛОГИКА УРОВНЕЙ ---
+        
+        // 1. Уровень 1 (Идем Низ)
+        if (Me.Level < 2) {
+            target = isRadiant ? RAD_BOT_XP.Clone() : DIRE_BOT_XP.Clone();
+        } 
+        // 2. Уровень 2-5 (Идем Мид)
+        else if (Me.Level >= 2 && Me.Level < 6) {
+            target = isRadiant ? RAD_MID_XP.Clone() : DIRE_MID_XP.Clone();
+        }
+        // 3. Уровень 6-9 (Идем Верх)
+        else if (Me.Level >= 6 && Me.Level < 10) {
+            target = isRadiant ? RAD_TOP_XP.Clone() : DIRE_TOP_XP.Clone();
+        }
+        // 4. Уровень 10+ (Идем в Лес гулять)
+        else {
+            target = isRadiant ? RAD_JUNGLE.Clone() : DIRE_JUNGLE.Clone();
+            // В лесу бегаем рандомно сильнее
+            target.x += (Math.random() * 2000 - 1000);
+            target.y += (Math.random() * 2000 - 1000);
         }
 
-        if (now - lastTick >= 100) {
-            lastTick = now;
-            target.x += (Math.random() * 800 - 400);
-            target.y += (Math.random() * 800 - 400);
-            try {
-                // @ts-ignore
-                ExecuteOrder.HoldOrdersTarget = target;
-                // @ts-ignore
-                Me.MoveTo(target, false, true);
-            } catch (e) {
-                // @ts-ignore
-                Me.MoveTo(target);
-            }
-        }
-        return; 
-    }
-
-    // ==========================================
-    // ЛОГИКА 2: СМАРТ БОТ (ГИБРИД)
-    // ==========================================
-    if (EnableSmart.value) {
-        // Скиллы
-        if (AutoSkill.value && Me.AbilityPoints > 0 && !Sleeper.Sleeping("skill")) {
-            const abilities = Me.Abilities.filter(a => a.CanLevelUp);
-            if (abilities.length > 0) {
-                // @ts-ignore
-                Me.UpgradeAbility(abilities[Math.floor(Math.random() * abilities.length)]);
-                Sleeper.Sleep(1000, "skill");
-            }
-        }
-        // Закуп
-        if (AutoItems.value && !Sleeper.Sleeping("buy_items")) {
-            if (!Me.GetItemByName("item_power_treads")) {
-                // @ts-ignore
-                Me.PurchaseItem("item_power_treads");
-                Sleeper.Sleep(2000, "buy_items");
-            } else if (!Me.GetItemByName("item_bfury")) {
-                // @ts-ignore
-                Me.PurchaseItem("item_bfury");
-                Sleeper.Sleep(2000, "buy_items");
-            } else if (!Me.GetItemByName("item_mask_of_madness")) {
-                // @ts-ignore
-                Me.PurchaseItem("item_mask_of_madness");
-                Sleeper.Sleep(2000, "buy_items");
-            }
-        }
-
-        // ДВИЖЕНИЕ
-        if (now - lastBotTick >= 500) { 
-            lastBotTick = now;
-            const isRadiant = LocalPlayer.Team === 2;
-            
-            // 1. Деф Трона
-            const ancient = EntityManager.GetEntitiesByClass("npc_dota_fortress").find(e => e.IsMyTeam);
-            // @ts-ignore
-            if (ancient && ancient.HealthPercent < 100) {
-                // @ts-ignore
-                Me.MoveTo(ancient.Position);
-                return;
-            }
-
-            // 2. Выбор Линии
-            let target = new Vector3(0,0,0);
-            if (Me.Level < 2) { 
-                target = isRadiant ? RAD_BOT.Clone() : DIRE_BOT.Clone();
-            } else if (Me.Level >= 2 && Me.Level < 6) { 
-                target = isRadiant ? RAD_MID.Clone() : DIRE_MID.Clone();
-            } else if (Me.Level >= 6 && Me.Level < 10) { 
-                target = isRadiant ? RAD_TOP.Clone() : DIRE_TOP.Clone();
-            } else { 
-                target = isRadiant ? RAD_JUNGLE.Clone() : DIRE_JUNGLE.Clone();
-                target.x += (Math.random() * 1000 - 500);
-                target.y += (Math.random() * 1000 - 500);
-            }
-
-            // Рандом
+        // Небольшой рандом для лайнинга, чтобы не стоять АФК в одной точке
+        if (Me.Level < 10) {
             target.x += (Math.random() * 300 - 150);
             target.y += (Math.random() * 300 - 150);
+        }
 
-            // 3. ГИБРИДНЫЙ РЕЖИМ
-            const dist = Me.Distance(target);
-            try {
-                if (dist > 1500) {
-                    // ЕСЛИ ДАЛЕКО (НА БАЗЕ) -> ОБЫЧНЫЙ БЕГ (ЧТОБЫ ВЫЙТИ)
-                    // @ts-ignore
-                    Me.MoveTo(target);
-                } else {
-                    // ЕСЛИ БЛИЗКО (НА ЛАЙНЕ) -> РЕЖИМ ФИДЕРА (ЧТОБЫ СТОЯТЬ ЖЕСТКО)
-                    // @ts-ignore
-                    ExecuteOrder.HoldOrdersTarget = target;
-                    // @ts-ignore
-                    Me.MoveTo(target, false, true);
-                }
-            } catch (e) {
-                // @ts-ignore
-                Me.MoveTo(target);
-            }
+        try {
+            // Используем твой "Прайм" мувмент с байпасом
+            // @ts-ignore
+            ExecuteOrder.HoldOrdersTarget = target;
+            // @ts-ignore
+            Me.MoveTo(target, false, true);
+        } catch (e) {
+            // @ts-ignore
+            Me.MoveTo(target);
         }
     }
 });
+
+console.log("best cheat octorine: Smart Hour Booster V59 Loaded");
