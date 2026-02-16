@@ -4,128 +4,105 @@ import {
     Menu,
     Vector3,
     EntityManager,
-    ExecuteOrder,
+    ExecuteOrder, // Цей модуль критично важливий
     Unit,
     DOTAUnitMoveCapability
 } from "github.com/octarine-public/wrapper/index"
 
-// ==========================================
-// --- НАЛАШТУВАННЯ МЕНЮ (GRIEF LORD V30) ---
-// ==========================================
-const Main = Menu.AddEntry("Grief Lord V30", "panorama/images/items/divine_rapier_png.vtex_c");
+// --- МЕНЮ ---
+const Main = Menu.AddEntry("Grief Lord V31", "panorama/images/items/divine_rapier_png.vtex_c");
 
-const RunDire = Main.AddToggle("1. БІГТИ ВГОРУ (До Dire)", false);
-const RunRadiant = Main.AddToggle("2. БІГТИ ВНИЗ (До Radiant)", false);
+const RunDire = Main.AddToggle("1. БІГТИ ВГОРУ (Dire)", false);
+const RunRadiant = Main.AddToggle("2. БІГТИ ВНИЗ (Radiant)", false);
 
 const FeedHero = Main.AddToggle("3. Фід ГЕРОЄМ", false);
 const FeedCour = Main.AddToggle("4. Фід КУР'ЄРАМИ", false);
-const FeedAllies = Main.AddToggle("5. Фід СОЮЗНИКАМИ (Shared)", false);
-const DebugLog = Main.AddToggle("6. Логи в консоль (Debug)", false);
+const FeedAllies = Main.AddToggle("5. Фід СОЮЗНИКАМИ", false);
+const ForceMode = Main.AddToggle("6. Force Mode (Ігнорувати перевірки)", false);
 
 let lastTick = 0;
 
-// ==========================================
-// --- ЛОГІКА З ТВОЇХ ФАЙЛІВ (MODULES) ---
-// ==========================================
+// --- ЛОГІКА З ФАЙЛУ CONTROLLABLES.TS ---
 
-// 1. Перевірка: чи може юніт взагалі ходити?
-function baseCheckUnit(ent: Unit): boolean {
-    return ent 
-        && ent.IsAlive 
-        && !ent.HasNoCollision 
-        && ent.HasMoveCapability(DOTAUnitMoveCapability.DOTA_UNIT_CAP_MOVE_GROUND);
+// 1. Перевірка на здатність рухатися (щоб не спамити вардам)
+function isValidUnit(unit: Unit): boolean {
+    return unit 
+        && unit.IsAlive 
+        && !unit.HasNoCollision 
+        && unit.HasMoveCapability(DOTAUnitMoveCapability.DOTA_UNIT_CAP_MOVE_GROUND);
 }
 
-// 2. Перевірка: чи можемо ми ним керувати?
-function checkControllable(ent: Unit): boolean {
-    // У твоєму файлі була сувора перевірка ent.IsControllable.
-    // Ми залишаємо її, бо якщо сервер не дає прав - скрипт не допоможе.
-    return baseCheckUnit(ent) && ent.IsControllable;
-}
-
-// 3. Основна функція руху (The Secret Sauce)
-function MoveUnit(unit: Unit, pos: Vector3): void {
-    // Цей рядок "прицілює" систему наказів чита
+// 2. Секретна функція руху
+function SmartMove(unit: Unit, pos: Vector3) {
+    // ХАК: Встановлюємо ціль для системи наказів
     try {
         // @ts-ignore
         ExecuteOrder.HoldOrdersTarget = pos;
     } catch (e) {}
 
-    // Спеціальні аргументи: (position, queue=false, bypass=true)
-    // false = не ставити в чергу (миттєво)
-    // true = обійти деякі клієнтські обмеження
-    // @ts-ignore
-    unit.MoveTo(pos, false, true);
+    // ВИКОНАННЯ: (pos, queue=false, bypass=true)
+    try {
+        // @ts-ignore
+        unit.MoveTo(pos, false, true);
+    } catch (e) {
+        // Фоллбек для старіших версій
+        // @ts-ignore
+        unit.MoveTo(pos);
+    }
 }
 
-// ==========================================
-// --- ГОЛОВНИЙ ЦИКЛ (MAIN LOOP) ---
-// ==========================================
+// --- ГОЛОВНИЙ ЦИКЛ ---
 EventsSDK.on("PostDataUpdate", () => {
     const Me = LocalPlayer?.Hero;
     if (!Me || !Me.IsAlive) return;
 
     const now = Date.now();
-    // Виконуємо цикл кожні 300 мс (досить швидко, але без лагів)
-    if (now - lastTick < 300) return;
+    // Частота оновлення як у кріп-блокера (швидка)
+    if (now - lastTick < 150) return;
     lastTick = now;
 
-    // 1. Вибір цілі
+    // 1. ЦІЛЬ
     let target: Vector3 | null = null;
     if (RunRadiant.value) target = new Vector3(-7200, -6600, 384);
     else if (RunDire.value) target = new Vector3(7200, 6500, 384);
 
     if (!target) return;
 
-    // Рандом (Anti-Bot Detection)
+    // Анти-бот рандом
     target.x += (Math.random() * 200 - 100);
     target.y += (Math.random() * 200 - 100);
 
     // 2. ФІД ГЕРОЄМ
     if (FeedHero.value) {
-        MoveUnit(Me, target);
+        SmartMove(Me, target);
     }
 
-    // 3. ФІД КУР'ЄРАМИ
-    if (FeedCour.value) {
-        const couriers = EntityManager.GetEntitiesByClass("npc_dota_courier");
-        for (const cour of couriers) {
-            // @ts-ignore
-            // Перевіряємо за базовою логікою + IsControllable
-            if (cour.IsMyTeam && baseCheckUnit(cour)) {
-                // @ts-ignore
-                if (cour.IsControllable) {
-                    // @ts-ignore
-                    MoveUnit(cour, target);
-                } else if (DebugLog.value) {
-                    // @ts-ignore
-                    console.log(`Skip Courier ${cour.Handle}: No Control`);
-                }
-            }
-        }
-    }
+    // 3. ФІД ІНШИМИ (Кури + Тіммейти)
+    if (FeedCour.value || FeedAllies.value) {
+        
+        // Збираємо всіх юнітів у радіусі (або по всій карті)
+        // Використовуємо GetEntitiesByClass, як у Block.ts
+        const couriers = FeedCour.value ? EntityManager.GetEntitiesByClass("npc_dota_courier") : [];
+        const heroes = FeedAllies.value ? EntityManager.GetEntitiesByClass("npc_dota_hero_*") : [];
+        
+        const army = [...couriers, ...heroes];
 
-    // 4. ФІД СОЮЗНИКАМИ (ALLIES)
-    if (FeedAllies.value) {
-        const heroes = EntityManager.GetEntitiesByClass("npc_dota_hero_*");
-        for (const hero of heroes) {
+        for (const unit of army) {
             // @ts-ignore
-            if (hero.IsMyTeam && !hero.IsMe && baseCheckUnit(hero)) {
+            if (!unit || unit.IsMe || !unit.IsMyTeam) continue;
+
+            // @ts-ignore
+            // Перевірка: чи живий і чи може ходити
+            if (!isValidUnit(unit)) continue;
+
+            // ГОЛОВНА ПЕРЕВІРКА КОНТРОЛЮ
+            // @ts-ignore
+            if (unit.IsControllable || ForceMode.value) {
                 // @ts-ignore
-                if (hero.IsControllable) {
-                    // @ts-ignore
-                    MoveUnit(hero, target);
-                    if (DebugLog.value) console.log(`Moving Ally: ${hero.Name}`);
-                } else {
-                    // Якщо контроль не розшарений і гравець не лівнув
-                    if (DebugLog.value && Math.random() > 0.9) { 
-                        // @ts-ignore
-                        console.log(`Can't control ally: ${hero.Name} (Server denied)`);
-                    }
-                }
+                SmartMove(unit, target);
             }
         }
     }
 });
 
-console.log("Grief Lord V30 (Logic from unit-blocker) Loaded!");
+console.log("Grief Lord V31: Source Code Logic Loaded!");
