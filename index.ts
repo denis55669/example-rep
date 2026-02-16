@@ -21,7 +21,7 @@ Menu.Localization.AddLocalizationUnit("english", new Map([
     ["fast_feed", "3. Fast Feed (Blinks & Skills)"],
     ["boost_node", "Smart Hour Booster"],
     ["enable_smart", "Enable Smart XP Farm"],
-    ["auto_queue", "Auto Queue (Aggressive)"],
+    ["auto_queue", "Auto Queue (Party/Solo Fix)"],
     ["auto_pt", "Auto Buy Power Treads"],
     ["auto_skill", "Auto Level Up Skills"]
 ]));
@@ -33,7 +33,7 @@ Menu.Localization.AddLocalizationUnit("russian", new Map([
     ["fast_feed", "3. Быстрый фид (Блинки и Скиллы)"],
     ["boost_node", "Умный Буст Часов"],
     ["enable_smart", "Включить Умный Фарм (XP)"],
-    ["auto_queue", "Авто-Поиск (Агрессивный)"],
+    ["auto_queue", "Авто-Поиск (Фикс для Пати/Соло)"],
     ["auto_pt", "Авто-покупка ПТ"],
     ["auto_skill", "Авто-прокачка скиллов"]
 ]));
@@ -67,19 +67,21 @@ let lastTick = 0;
 let lastMove = 0;
 
 EventsSDK.on("PostDataUpdate", () => {
-    // 1. АВТО-ПРИНЯТИЕ (Мгновенно)
+    // 1. АВТО-ПРИНЯТИЕ
     if (GameState.IsMatchFound && !GameState.HasAccepted) {
         EventsSDK.ExecuteCommand("dota_accept_match");
         return;
     }
 
-    // 2. АВТО-ПОИСК (АГРЕССИВНЫЙ)
+    // 2. АВТО-ПОИСК (НОВЫЙ МЕТОД)
     if (EnableSmart.value && AutoQueue.value) {
         if (!GameState.IsInGame && !GameState.IsSearching) {
-            // Спамим кнопку каждую секунду (1000мс), пока не начнется поиск
-            if (!Sleeper.Sleeping("queue_spam")) {
+            if (!Sleeper.Sleeping("queue_try")) {
+                console.log("Auto Queue: Pushing button..."); // Лог в консоль
+                // Пробуем обе команды сразу
+                EventsSDK.ExecuteCommand("dota_party_start_search"); 
                 EventsSDK.ExecuteCommand("dota_match_find_match");
-                Sleeper.Sleep(1000, "queue_spam");
+                Sleeper.Sleep(3000, "queue_try");
             }
         }
     }
@@ -106,7 +108,7 @@ EventsSDK.on("PostDataUpdate", () => {
         }
     }
 
-    // 4. ФИДЕР (BAD GUY) - ВСЕГДА В КОДЕ
+    // 4. ФИДЕР (BAD GUY)
     if (RunToRadiant.value || RunToDire.value) {
         let target = RunToRadiant.value ? BASE_RADIANT.Clone() : BASE_DIRE.Clone();
         if (FastFeed.value && !Sleeper.Sleeping && Me.Distance(target) > 800) {
@@ -136,7 +138,7 @@ EventsSDK.on("PostDataUpdate", () => {
         return;
     }
 
-    // 5. ДВИЖЕНИЕ ПО ЛИНИЯМ (SMART FARM)
+    // 5. ДВИЖЕНИЕ ПО ЛИНИЯМ
     if (EnableSmart.value && now - lastMove >= 3000) {
         lastMove = now;
         const isRadiant = LocalPlayer.Team === 2;
