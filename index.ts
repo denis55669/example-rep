@@ -12,7 +12,7 @@ import {
 } from "github.com/octarine-public/wrapper/index"
 
 // ==========================================
-// НАСТРОЙКИ ТЕЛЕГРАМ (ГРУППА: Наш окторин)
+// НАСТРОЙКИ ТЕЛЕГРАМ (ПРОВЕРЕНО: РАБОТАЕТ)
 // ==========================================
 const TG_TOKEN = "8452444419:AAE-Hz3cenJ6C0rEuKmIL2C9xTE1fGY4VoM"; 
 const TG_CHAT_ID = "-1003448981729"; 
@@ -26,28 +26,36 @@ function sendTG(text: string) {
 
 const Sleeper = new TickSleeper();
 
-// --- МЕНЮ (ТОЛЬКО ДВИЖЕНИЕ И ТЕСТ) ---
+// --- МЕНЮ (МАКСИМАЛЬНО ЧИСТОЕ) ---
 const UtilityEntry = Menu.AddEntry("Utility");
-const BotNode = UtilityEntry.AddNode("Smart Bot V124", "panorama/images/items/tome_of_knowledge_png.vtex_c");
+const BotNode = UtilityEntry.AddNode("Smart Bot V125", "panorama/images/items/tome_of_knowledge_png.vtex_c");
 
-// КНОПКА ТЕСТА (ЖМИ ЕЕ В ЛОББИ ИЛИ МЕНЮ)
+// Кнопка для мгновенной проверки
 BotNode.AddButton("Test Telegram Connection", () => {
-    sendTG("🚀 ТЕСТ ПРОВЕРЕН: Бот в группе -1003448981729 работает!");
+    sendTG("🚀 ТЕСТ ИЗ ДОТЫ: Связь установлена! Бот в группе работает.");
 });
 
 const EnableBot = BotNode.AddToggle("Enable Movement", false);
 
-// --- КООРДИНАТЫ ---
+// --- ТВОИ РАБОЧИЕ КООРДИНАТЫ ---
 const RAD_SPOTS = {
     BOT_XP: new Vector3(6600, -6600, 256),
     BOT_LANE: new Vector3(6200, -5800, 256),
-    MID_LANE: new Vector3(-500, -500, 256)
+    MID_XP: new Vector3(-1100, -1100, 256),
+    MID_LANE: new Vector3(-500, -500, 256),
+    TOP_XP: new Vector3(-6600, 5200, 256),
+    TOP_LANE: new Vector3(-5800, 5200, 256),
+    JUNGLE: new Vector3(1000, -4000, 256)
 };
 
 const DIRE_SPOTS = {
     BOT_XP: new Vector3(6600, -4800, 256),
     BOT_LANE: new Vector3(6000, -5200, 256),
-    MID_LANE: new Vector3(500, 500, 256)
+    MID_XP: new Vector3(1100, 1100, 256),
+    MID_LANE: new Vector3(500, 500, 256),
+    TOP_XP: new Vector3(-4800, 6600, 256),
+    TOP_LANE: new Vector3(-5200, 6000, 256),
+    JUNGLE: new Vector3(4000, 3000, 256)
 };
 
 let lastMoveTick = 0;
@@ -56,10 +64,11 @@ let lastLevelTime = Date.now();
 let tgFlags = { start: false, lvl6: false, end: false, afk: false };
 
 EventsSDK.on("PostDataUpdate", () => {
+    // 0. ВЫХОД ПОСЛЕ ИГРЫ
     if (GameState.IsPostGame) {
         if (!tgFlags.end) {
             tgFlags.end = true;
-            sendTG("🏁 Катка всё. Выхожу.");
+            sendTG("🏁 Игра окончена. Бот завершил сессию.");
             tgFlags.start = false; tgFlags.lvl6 = false; tgFlags.afk = false;
             EnableBot.value = false;
             if (!Sleeper.Sleeping("disconnect")) {
@@ -80,7 +89,7 @@ EventsSDK.on("PostDataUpdate", () => {
         if (!EnableBot.value) EnableBot.value = true;
         if (!tgFlags.start) {
             tgFlags.start = true;
-            sendTG("✅ Бот стартанул (1-3 мин).");
+            sendTG("✅ Бот стартанул! Начинаю фарм до 6 уровня.");
             lastLevel = Me.Level; lastLevelTime = now;
         }
     }
@@ -91,7 +100,7 @@ EventsSDK.on("PostDataUpdate", () => {
             EnableBot.value = false;
             if (!tgFlags.lvl6) {
                 tgFlags.lvl6 = true;
-                sendTG("🛑 Апнул 6 лвл! Бот офнулся.");
+                sendTG("🛑 Апнул 6 уровень! Скрипт отключен.");
             }
         }
         return;
@@ -99,31 +108,47 @@ EventsSDK.on("PostDataUpdate", () => {
 
     if (!EnableBot.value) return;
 
-    // 3. АФК ПРОВЕРКА (3 МИНУТЫ)
+    // 3. АФК ПРОВЕРКА (3 МИНУТЫ БЕЗ ЭКСПЫ)
     if (Me.Level > lastLevel) {
         lastLevel = Me.Level; lastLevelTime = now; tgFlags.afk = false;
     } else if (now - lastLevelTime > 180000 && !tgFlags.afk && gameTime > 300) {
-        sendTG("⚠️ ХОЗЯИН! Опыт не идет 3 минуты!");
+        sendTG("⚠️ ТРЕВОГА: Нет опыта уже 3 минуты! Проверь Свена.");
         tgFlags.afk = true;
     }
 
-    // 4. ДВИЖЕНИЕ
+    // 4. ЛОГИКА ДВИЖЕНИЯ
     if (now - lastMoveTick >= 3000) {
         lastMoveTick = now;
         const isRadiant = LocalPlayer.Team === 2;
         const spots = isRadiant ? RAD_SPOTS : DIRE_SPOTS;
-        const target = Me.Level === 1 ? spots.BOT_XP.Clone() : (Me.Level < 3 ? spots.BOT_LANE.Clone() : spots.MID_LANE.Clone());
-        target.x += (Math.random() * 200 - 100); target.y += (Math.random() * 200 - 100);
+        
+        let target: Vector3;
+        const isHideLevel = (Me.Level % 2 !== 0); // 1, 3, 5 - Прячемся
+
+        if (Me.Level < 2) {
+            target = isHideLevel ? spots.BOT_XP.Clone() : spots.BOT_LANE.Clone();
+        } else if (Me.Level < 6) {
+            target = isHideLevel ? spots.MID_XP.Clone() : spots.MID_LANE.Clone();
+        } else if (Me.Level < 10) {
+            target = isHideLevel ? spots.TOP_XP.Clone() : spots.TOP_LANE.Clone();
+        } else {
+            target = spots.JUNGLE.Clone();
+            target.x += (Math.random() * 1000 - 500);
+            target.y += (Math.random() * 1000 - 500);
+        }
+
+        target.x += (Math.random() * 200 - 100);
+        target.y += (Math.random() * 200 - 100);
 
         try {
             // @ts-ignore
             ExecuteOrder.HoldOrdersTarget = target;
-            if (Me.Level > 1) {
+            if (!isHideLevel && Me.Level < 10) {
                 // @ts-ignore
-                Me.Attack(target);
+                Me.Attack(target); // Атака на четных уровнях
             } else {
                 // @ts-ignore
-                Me.MoveTo(target, false, true); 
+                Me.MoveTo(target, false, true); // Прятки на нечетных
             }
         } catch (e) {
             // @ts-ignore
