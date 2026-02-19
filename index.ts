@@ -7,49 +7,65 @@ import {
     ExecuteOrder,
     TickSleeper,
     GameState,
-    EntityManager
+    EntityManager,
+    GameRules
 } from "github.com/octarine-public/wrapper/index"
+
+// ==========================================
+// НАСТРОЙКИ ТЕЛЕГРАМ БОТА (УЖЕ НАСТРОЕНО)
+// ==========================================
+const TG_TOKEN = "8375661670:AAEnq9BrNZOpa6FsSqD4FDC6KqGoS67qkrE"; 
+const TG_CHAT_ID = "7593470954"; 
+
+function sendTG(text: string) {
+    try {
+        const url = `https://api.telegram.org/bot${TG_TOKEN}/sendMessage?chat_id=${TG_CHAT_ID}&text=${encodeURIComponent(text)}`;
+        if (typeof fetch !== "undefined") {
+            fetch(url).catch(() => {}); 
+        }
+    } catch (e) {}
+}
 
 const Sleeper = new TickSleeper();
 
 // --- МЕНЮ ---
 const UtilityEntry = Menu.AddEntry("Utility");
-const BotNode = UtilityEntry.AddNode("Smart Bot V109", "panorama/images/items/tome_of_knowledge_png.vtex_c");
+const BotNode = UtilityEntry.AddNode("Smart Bot V113 (TG)", "panorama/images/items/tome_of_knowledge_png.vtex_c");
 
-const EnableBot = BotNode.AddToggle("Enable Movement", true);
+const EnableBot = BotNode.AddToggle("Enable Movement", false);
 const AutoSkill = BotNode.AddToggle("Auto Level Skills (Sven 2nd)", true);
 const AutoItems = BotNode.AddToggle("Auto Buy Items", true);
 
-// --- КООРДИНАТИ ---
 const RAD_SPOTS = {
     BOT_XP: new Vector3(6600, -6600, 256),  
     BOT_LANE: new Vector3(6200, -5800, 256), 
-    MID_XP: new Vector3(-1100, -1100, 256), 
-    MID_LANE: new Vector3(-500, -500, 256),
-    TOP_XP: new Vector3(-6600, 5200, 256), 
-    TOP_LANE: new Vector3(-5800, 5200, 256),
-    JUNGLE: new Vector3(1000, -4000, 256)
+    MID_LANE: new Vector3(-500, -500, 256)
 };
 
 const DIRE_SPOTS = {
     BOT_XP: new Vector3(6600, -4800, 256), 
     BOT_LANE: new Vector3(6000, -5200, 256),
-    MID_XP: new Vector3(1100, 1100, 256),
-    MID_LANE: new Vector3(500, 500, 256),
-    TOP_XP: new Vector3(-4800, 6600, 256), 
-    TOP_LANE: new Vector3(-5200, 6000, 256),
-    JUNGLE: new Vector3(4000, 3000, 256)
+    MID_LANE: new Vector3(500, 500, 256)
 };
 
 let lastMoveTick = 0;
+let tgFlags = { start: false, lvl6: false, end: false };
+let lastLevel = 0;
+let lastLevelTime = Date.now();
+let afkWarningSent = false;
 
 EventsSDK.on("PostDataUpdate", () => {
-    // 0. АВТО-ВЫХОД (DISCONNECT)
-    // Працює, коли гра закінчилась
+    // 0. КОНЕЦ ИГРЫ
     if (GameState.IsPostGame) {
-        if (!Sleeper.Sleeping("disconnect")) {
-            EventsSDK.ExecuteCommand("disconnect");
-            Sleeper.Sleep(5000, "disconnect");
+        if (!tgFlags.end) {
+            tgFlags.end = true;
+            const minutes = Math.floor((GameRules?.GameTime || 0) / 60);
+            sendTG(`🏁 Игра завершена за ${minutes} мин. Выхожу.`);
+            tgFlags.start = false; tgFlags.lvl6 = false; afkWarningSent = false; EnableBot.value = false;
+            if (!Sleeper.Sleeping("disconnect")) {
+                EventsSDK.ExecuteCommand("disconnect");
+                Sleeper.Sleep(5000, "disconnect");
+            }
         }
         return;
     }
@@ -57,88 +73,79 @@ EventsSDK.on("PostDataUpdate", () => {
     const Me = LocalPlayer?.Hero;
     if (!Me || !Me.IsAlive) return;
 
-    // ЦЕНТРУВАННЯ КАМЕРИ (Щоб не збивалася)
-    if (EnableBot.value) {
-        EventsSDK.ExecuteCommand("dota_camera_center");
-    }
-
-    // 1. ВИМИКАННЯ НА 6 РІВНІ
-    if (Me.Level >= 6) {
-        if (EnableBot.value) EnableBot.value = false;
-        return; 
-    }
-
-    // 2. ВКЛЮЧЕННЯ НА СТАРТІ (< 6)
-    if (Me.Level < 6 && !EnableBot.value) {
+    // 1. АВТО-СТАРТ (< 6)
+    if (Me.Level < 6 && !EnableBot.value && GameRules?.GameTime > 10) {
         EnableBot.value = true;
+        if (!tgFlags.start) {
+            tgFlags.start = true;
+            sendTG("✅ Игра началась! Фармлю до 6 лвл.");
+            lastLevelTime = Date.now();
+            lastLevel = Me.Level;
+        }
+    }
+
+    // 2. АВТО-СТОП (6 УРОВЕНЬ)
+    if (Me.Level >= 6) {
+        if (EnableBot.value) {
+            EnableBot.value = false; 
+            if (!tgFlags.lvl6) {
+                tgFlags.lvl6 = true;
+                sendTG("🛑 6 уровень взят! Бот офнулся.");
+            }
+        }
+        return; 
     }
 
     if (!EnableBot.value) return;
     const now = Date.now();
 
-    // 3. ПРОКАЧКА (2-й скіл пріоритет)
+    // КАМЕРА
+    EventsSDK.ExecuteCommand("dota_camera_center");
+
+    // 3. AFK ПРОВЕРКА (3 МИНУТЫ)
+    if (Me.Level > lastLevel) {
+        lastLevel = Me.Level; lastLevelTime = now; afkWarningSent = false; 
+    } else if (now - lastLevelTime > 180000 && !afkWarningSent) {
+        sendTG("⚠️ ВНИМАНИЕ: Нет опыта 3 минуты!");
+        afkWarningSent = true;
+    }
+
+    // 4. ПРОКАЧКА (SVEN)
     if (AutoSkill.value && Me.AbilityPoints > 0 && !Sleeper.Sleeping("skill_up")) {
-        const cleave = Me.GetAbilityByName("sven_great_cleave");
-        const hammer = Me.GetAbilityByName("sven_storm_bolt");
-        const targetAbility = (cleave && cleave.CanLevelUp) ? cleave : hammer;
-        if (targetAbility) {
+        const target = Me.GetAbilityByName("sven_great_cleave") || Me.GetAbilityByName("sven_storm_bolt");
+        if (target?.CanLevelUp) {
             // @ts-ignore
-            Me.UpgradeAbility(targetAbility);
+            Me.UpgradeAbility(target);
             Sleeper.Sleep(2000, "skill_up");
         }
     }
 
-    // 4. ЗАКУП (PT -> BF -> MOM)
+    // 5. ЗАКУП
     if (AutoItems.value && !Sleeper.Sleeping("buy_logic")) {
         const items = ["item_power_treads", "item_bfury", "item_mask_of_madness"];
-        for (const itemName of items) {
-            if (!Me.GetItemByName(itemName)) {
+        for (const item of items) {
+            if (!Me.GetItemByName(item)) {
                 // @ts-ignore
-                Me.PurchaseItem(itemName);
-                Sleeper.Sleep(5000, "buy_logic");
-                break;
+                Me.PurchaseItem(item);
+                Sleeper.Sleep(5000, "buy_logic"); break;
             }
         }
     }
 
-    // 5. РУХ
+    // 6. ДВИЖЕНИЕ (100% ЭКСПА)
     if (now - lastMoveTick >= 3000) {
         lastMoveTick = now;
         const isRadiant = LocalPlayer.Team === 2;
         const spots = isRadiant ? RAD_SPOTS : DIRE_SPOTS;
-        
-        let target: Vector3;
-        const isHideLevel = (Me.Level % 2 !== 0); // 1, 3, 5 - Ховаємось
+        const target = Me.Level === 1 ? spots.BOT_XP.Clone() : (Me.Level < 3 ? spots.BOT_LANE.Clone() : spots.MID_LANE.Clone());
+        target.x += (Math.random() * 200 - 100); target.y += (Math.random() * 200 - 100);
 
-        // Схема ліній: 1-2(Bot), 3-4(Mid), 5(Top)
-        if (Me.Level < 2) {
-            target = isHideLevel ? spots.BOT_XP.Clone() : spots.BOT_LANE.Clone();
-        } else if (Me.Level < 4) { // Змінив на 4, щоб швидше змінював лінії
-            target = isHideLevel ? spots.MID_XP.Clone() : spots.MID_LANE.Clone();
-        } else {
-            target = isHideLevel ? spots.TOP_XP.Clone() : spots.TOP_LANE.Clone();
-        }
-
-        target.x += (Math.random() * 200 - 100);
-        target.y += (Math.random() * 200 - 100);
-
-        try {
-            if (!isHideLevel) {
-                // АТАКА (Парні рівні)
-                // @ts-ignore
-                ExecuteOrder.HoldOrdersTarget = target;
-                // @ts-ignore
-                Me.Attack(target); 
-            } else {
-                // ХОВАНКИ (Непарні рівні)
-                // @ts-ignore
-                ExecuteOrder.HoldOrdersTarget = target;
-                // @ts-ignore
-                Me.MoveTo(target, false, true); 
-            }
-        } catch (e) {
+        if (Me.Level > 1) {
             // @ts-ignore
-            Me.MoveTo(target);
+            ExecuteOrder.HoldOrdersTarget = target; Me.Attack(target); 
+        } else {
+            // @ts-ignore
+            ExecuteOrder.HoldOrdersTarget = target; Me.MoveTo(target, false, true); 
         }
     }
 });
