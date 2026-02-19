@@ -12,7 +12,7 @@ import {
 } from "github.com/octarine-public/wrapper/index"
 
 // ==========================================
-// НАСТРОЙКИ ТЕЛЕГРАМ (НОВАЯ ГРУППА)
+// НАСТРОЙКИ ТЕЛЕГРАМ (ГРУППА: Наш окторин)
 // ==========================================
 const TG_TOKEN = "8452444419:AAE-Hz3cenJ6C0rEuKmIL2C9xTE1fGY4VoM"; 
 const TG_CHAT_ID = "-1003448981729"; 
@@ -20,15 +20,24 @@ const TG_CHAT_ID = "-1003448981729";
 function sendTG(text: string) {
     const url = `https://api.telegram.org/bot${TG_TOKEN}/sendMessage?chat_id=${TG_CHAT_ID}&text=${encodeURIComponent(text)}`;
     try {
+        // Отправка через встроенный fetch
         fetch(url).catch(() => {}); 
+        // Вывод в консоль доты для понимания, что скрипт сработал
+        EventsSDK.ExecuteCommand(`echo "[SmartBot] Attempting to send TG: ${text}"`);
     } catch (e) {}
 }
 
 const Sleeper = new TickSleeper();
 
-// --- МЕНЮ (ТОЛЬКО ДВИЖЕНИЕ) ---
+// --- МЕНЮ (ТОЛЬКО ДВИЖЕНИЕ И ТЕСТ) ---
 const UtilityEntry = Menu.AddEntry("Utility");
-const BotNode = UtilityEntry.AddNode("Smart Bot V121", "panorama/images/items/tome_of_knowledge_png.vtex_c");
+const BotNode = UtilityEntry.AddNode("Smart Bot V122", "panorama/images/items/tome_of_knowledge_png.vtex_c");
+
+// КНОПКА ТЕСТА (Работает везде и всегда)
+BotNode.AddButton("Test Telegram Connection", () => {
+    sendTG("🧪 ТЕСТ: Кнопка в меню нажата! Связь с Окторином есть.");
+});
+
 const EnableBot = BotNode.AddToggle("Enable Movement", false);
 
 // --- КООРДИНАТЫ ---
@@ -51,21 +60,15 @@ const DIRE_SPOTS = {
 let lastMoveTick = 0;
 let lastLevel = 0;
 let lastLevelTime = Date.now();
-let tgFlags = { start: false, lvl6: false, end: false, afk: false, test: false };
+let tgFlags = { start: false, lvl6: false, end: false, afk: false };
 
 EventsSDK.on("PostDataUpdate", () => {
-    // ТЕСТ ТГ ПРИ ВКЛЮЧЕНИИ
-    if (EnableBot.value && !tgFlags.test) {
-        sendTG("🚀 Smart Bot V121 запущен! Новая группа на связи.");
-        tgFlags.test = true;
-    }
-
     // 0. ВЫХОД ИЗ ИГРЫ
     if (GameState.IsPostGame) {
         if (!tgFlags.end) {
             tgFlags.end = true;
-            sendTG("🏁 Игра окончена. Выхожу в главное меню.");
-            tgFlags.start = false; tgFlags.lvl6 = false; tgFlags.afk = false; tgFlags.test = false;
+            sendTG("🏁 Игра окончена. Бот завершил сессию.");
+            tgFlags.start = false; tgFlags.lvl6 = false; tgFlags.afk = false;
             EnableBot.value = false;
             if (!Sleeper.Sleeping("disconnect")) {
                 EventsSDK.ExecuteCommand("disconnect");
@@ -80,12 +83,12 @@ EventsSDK.on("PostDataUpdate", () => {
     const now = Date.now();
     const gameTime = GameRules?.GameTime || 0;
 
-    // 1. ПРИНУДИТЕЛЬНЫЙ СТАРТ (1-3 МИНУТА)
+    // 1. АВТО-СТАРТ (1-3 МИНУТА)
     if (gameTime >= 60 && gameTime <= 180 && Me.Level < 6) {
         if (!EnableBot.value) EnableBot.value = true;
         if (!tgFlags.start) {
             tgFlags.start = true;
-            sendTG("✅ Бот начал движение (время 1-3 мин).");
+            sendTG("✅ Игра началась! Бот в деле.");
             lastLevel = Me.Level; lastLevelTime = now;
         }
     }
@@ -96,7 +99,7 @@ EventsSDK.on("PostDataUpdate", () => {
             EnableBot.value = false;
             if (!tgFlags.lvl6) {
                 tgFlags.lvl6 = true;
-                sendTG("🛑 Апнул 6 уровень! Бот засыпает.");
+                sendTG("🛑 Достигнут 6 уровень. Бот уходит на покой.");
             }
         }
         return;
@@ -108,7 +111,7 @@ EventsSDK.on("PostDataUpdate", () => {
     if (Me.Level > lastLevel) {
         lastLevel = Me.Level; lastLevelTime = now; tgFlags.afk = false;
     } else if (now - lastLevelTime > 180000 && !tgFlags.afk && gameTime > 300) {
-        sendTG("⚠️ ВНИМАНИЕ: Нет опыта уже 3 минуты!");
+        sendTG("⚠️ ВНИМАНИЕ: Герой не получает опыт более 3 минут!");
         tgFlags.afk = true;
     }
 
