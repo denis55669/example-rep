@@ -12,10 +12,10 @@ import {
 } from "github.com/octarine-public/wrapper/index"
 
 // ==========================================
-// НАСТРОЙКИ ТЕЛЕГРАМ БОТА (ОБНОВЛЕНО)
+// НАСТРОЙКИ ТЕЛЕГРАМ (ГРУППА)
 // ==========================================
 const TG_TOKEN = "8452444419:AAE-Hz3cenJ6C0rEuKmIL2C9xTE1fGY4VoM"; 
-const TG_CHAT_ID = "7593470954"; 
+const TG_CHAT_ID = "-1002421119924"; // ID твоей группы
 
 function sendTG(text: string) {
     try {
@@ -30,7 +30,7 @@ const Sleeper = new TickSleeper();
 
 // --- МЕНЮ ---
 const UtilityEntry = Menu.AddEntry("Utility");
-const BotNode = UtilityEntry.AddNode("Smart Bot V115 (Forced)", "panorama/images/items/tome_of_knowledge_png.vtex_c");
+const BotNode = UtilityEntry.AddNode("Smart Bot V117", "panorama/images/items/tome_of_knowledge_png.vtex_c");
 
 const EnableBot = BotNode.AddToggle("Enable Movement", false);
 const AutoSkill = BotNode.AddToggle("Auto Level Skills", true);
@@ -55,12 +55,12 @@ let lastLevelTime = Date.now();
 let afkWarningSent = false;
 
 EventsSDK.on("PostDataUpdate", () => {
-    // 0. ПРОВЕРКА КОНЦА ИГРЫ
+    // 0. ВЫХОД ИЗ ИГРЫ
     if (GameState.IsPostGame) {
         if (!tgFlags.end) {
             tgFlags.end = true;
             const minutes = Math.floor((GameRules?.GameTime || 0) / 60);
-            sendTG(`🏁 Игра завершена за ${minutes} мин. Выхожу в меню.`);
+            sendTG(`🏁 Катка окончена! Время: ${minutes} мин. Выхожу из игры.`);
             tgFlags.start = false; tgFlags.lvl6 = false; afkWarningSent = false; EnableBot.value = false;
             if (!Sleeper.Sleeping("disconnect")) {
                 EventsSDK.ExecuteCommand("disconnect");
@@ -72,30 +72,28 @@ EventsSDK.on("PostDataUpdate", () => {
 
     const Me = LocalPlayer?.Hero;
     if (!Me || !Me.IsAlive) return;
-
     const gameTime = GameRules?.GameTime || 0;
 
-    // 1. ПРИНУДИТЕЛЬНЫЙ СТАРТ (С 1 ДО 3 МИНУТЫ)
-    // Если время от 60 до 180 сек и бот выключен — включаем без остановки
+    // 1. ПРИНУДИТЕЛЬНЫЙ СТАРТ (1-3 МИНУТА)
     if (gameTime >= 60 && gameTime <= 180 && Me.Level < 6) {
         if (!EnableBot.value) {
             EnableBot.value = true;
             if (!tgFlags.start) {
                 tgFlags.start = true;
-                sendTG("✅ Бот активирован принудительно (интервал 1-3 мин). Иду фармить.");
+                sendTG("✅ Бот запущен принудительно! Иду фармить опыт.");
                 lastLevelTime = Date.now();
                 lastLevel = Me.Level;
             }
         }
     }
 
-    // 2. АВТО-СТОП (6 УРОВЕНЬ)
+    // 2. АВТО-СТОП (6 ЛВЛ)
     if (Me.Level >= 6) {
         if (EnableBot.value) {
             EnableBot.value = false; 
             if (!tgFlags.lvl6) {
                 tgFlags.lvl6 = true;
-                sendTG("🛑 Апнул 6 уровень! Скрипт остановлен.");
+                sendTG("🛑 Свен апнул 6 лвл! Фарм окончен, бот спит.");
             }
         }
         return; 
@@ -104,55 +102,52 @@ EventsSDK.on("PostDataUpdate", () => {
     if (!EnableBot.value) return;
     const now = Date.now();
 
-    // ЦЕНТРИРОВАНИЕ КАМЕРЫ
+    // КАМЕРА
     EventsSDK.ExecuteCommand("dota_camera_center");
 
-    // 3. AFK ПРОВЕРКА (3 МИНУТЫ БЕЗ ЭКСПЫ)
+    // 3. AFK ПРОВЕРКА (3 МИНУТЫ)
     if (Me.Level > lastLevel) {
         lastLevel = Me.Level; lastLevelTime = now; afkWarningSent = false; 
     } else if (now - lastLevelTime > 180000 && !afkWarningSent && gameTime > 300) {
-        sendTG("⚠️ ВНИМАНИЕ: Экспа не идет уже 3 минуты!");
+        sendTG("⚠️ ВНИМАНИЕ: Герой не получал опыт 3 минуты!");
         afkWarningSent = true;
     }
 
-    // 4. ПРОКАЧКА (SVEN)
+    // 4. ПРОКАЧКА И ЗАКУП
     if (AutoSkill.value && Me.AbilityPoints > 0 && !Sleeper.Sleeping("skill_up")) {
-        const cleave = Me.GetAbilityByName("sven_great_cleave");
-        const hammer = Me.GetAbilityByName("sven_storm_bolt");
-        const targetAbility = (cleave && cleave.CanLevelUp) ? cleave : hammer;
-        if (targetAbility) {
+        const target = Me.GetAbilityByName("sven_great_cleave") || Me.GetAbilityByName("sven_storm_bolt");
+        if (target?.CanLevelUp) {
             // @ts-ignore
-            Me.UpgradeAbility(targetAbility);
+            Me.UpgradeAbility(target);
             Sleeper.Sleep(2000, "skill_up");
         }
     }
 
-    // 5. ЗАКУП
     if (AutoItems.value && !Sleeper.Sleeping("buy_logic")) {
         const items = ["item_power_treads", "item_bfury", "item_mask_of_madness"];
-        for (const itemName of items) {
-            if (!Me.GetItemByName(itemName)) {
+        for (const item of items) {
+            if (!Me.GetItemByName(item)) {
                 // @ts-ignore
-                Me.PurchaseItem(itemName);
-                Sleeper.Sleep(5000, "buy_logic");
-                break;
+                Me.PurchaseItem(item);
+                Sleeper.Sleep(5000, "buy_logic"); break;
             }
         }
     }
 
-    // 6. ДВИЖЕНИЕ (АНТИ-АФК ЛОГИКА)
+    // 5. ДВИЖЕНИЕ (АНТИ-АФК)
     if (now - lastMoveTick >= 3000) {
         lastMoveTick = now;
         const isRadiant = LocalPlayer.Team === 2;
         const spots = isRadiant ? RAD_SPOTS : DIRE_SPOTS;
         
-        let target: Vector3;
+        // Свен прячется на 1 лвл, на 2+ идет пушить мид/бот за экспой
         const isHideLevel = (Me.Level === 1); 
+        let target: Vector3;
 
         if (Me.Level < 3) {
             target = isHideLevel ? spots.BOT_XP.Clone() : spots.BOT_LANE.Clone();
         } else {
-            target = spots.MID_LANE.Clone(); // Фармим мид для экспы
+            target = spots.MID_LANE.Clone(); 
         }
 
         target.x += (Math.random() * 200 - 100);
