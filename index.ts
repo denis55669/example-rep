@@ -5,101 +5,107 @@ import {
     Vector3,
     Unit,
     ExecuteOrder,
-    TickSleeper,
-    GameState,
-    EntityManager,
-    GameRules
+    TickSleeper
 } from "github.com/octarine-public/wrapper/index"
 
+// Ініціалізація сліпера для пауз між блінками
 const Sleeper = new TickSleeper();
 
-// --- МЕНЮ (ЧИСТОЕ) ---
+// --- ЛОКАЛІЗАЦІЯ (RU/EN) ---
+Menu.Localization.AddLocalizationUnit("english", new Map([
+    ["feed_node", "Feed"],
+    ["run_radiant", "1. Feed RADIANT (Down)"],
+    ["run_dire", "2. Feed DIRE (Up)"],
+    ["fast_feed", "3. Fast Feed (Blinks & Skills)"]
+]));
+
+Menu.Localization.AddLocalizationUnit("russian", new Map([
+    ["feed_node", "Фид"],
+    ["run_radiant", "1. Фид RADIANT (Вниз)"],
+    ["run_dire", "2. Фид DIRE (Вверх)"],
+    ["fast_feed", "3. Быстрый фид (Блинки и Скиллы)"]
+]));
+
+// --- МЕНЮ (Інтеграція в Utility -> Bad Guy) ---
+// 1. Отримуємо доступ до головної вкладки Utility
 const UtilityEntry = Menu.AddEntry("Utility");
-const BotNode = UtilityEntry.AddNode("Smart AFK Bot V130", "panorama/images/items/tome_of_knowledge_png.vtex_c");
-const EnableBot = BotNode.AddToggle("Enable AFK Bot", false);
 
-// --- КООРДИНАТЫ ---
-const RAD_SPOTS = {
-    BOT_XP: new Vector3(6600, -6600, 256),   // Кусты (прячемся)
-    BOT_LANE: new Vector3(6200, -5800, 256), // Низ линия
-    MID_LANE: new Vector3(-500, -500, 256)   // МИД линия
-};
+// 2. Створюємо/підключаємося до вузла Bad Guy всередині Utility
+const BadGuyNode = UtilityEntry.AddNode("Bad Guy", "panorama/images/items/shadow_amulet_png.vtex_c");
 
-const DIRE_SPOTS = {
-    BOT_XP: new Vector3(6600, -4800, 256),
-    BOT_LANE: new Vector3(6000, -5200, 256),
-    MID_LANE: new Vector3(500, 500, 256)
-};
+// 3. Додаємо наш вузол Feed з іконкою скелета в Bad Guy
+const FeedNode = BadGuyNode.AddNode("feed_node", "panorama/images/spellicons/skeleton_king_reincarnation_png.vtex_c");
 
-let lastMoveTick = 0;
+const RunToRadiant = FeedNode.AddToggle("run_radiant", false);
+const RunToDire = FeedNode.AddToggle("run_dire", false);
+const FastFeed = FeedNode.AddToggle("fast_feed", true);
+
+// Координати баз
+const BASE_RADIANT = new Vector3(-7200, -6600, 384);
+const BASE_DIRE = new Vector3(7200, 6500, 384);
+
+let lastTick = 0;
 
 EventsSDK.on("PostDataUpdate", () => {
-    // 0. АВТО-ВЫХОД ИЗ ИГРЫ ПОСЛЕ КАТКИ
-    if (GameState.IsPostGame) {
-        EnableBot.value = false;
-        if (!Sleeper.Sleeping("disconnect")) {
-            EventsSDK.ExecuteCommand("disconnect");
-            Sleeper.Sleep(5000, "disconnect");
-        }
-        return;
-    }
-
     const Me = LocalPlayer?.Hero;
     if (!Me || !Me.IsAlive) return;
-    
     const now = Date.now();
-    const gameTime = GameRules?.GameTime || 0;
 
-    // 1. АВТО-СТАРТ (С 1 ПО 3 МИНУТУ)
-    // Если ты забыл нажать галочку, бот сам себя включит
-    if (gameTime >= 60 && gameTime <= 180 && Me.Level < 6) {
-        if (!EnableBot.value) EnableBot.value = true;
-    }
+    // Перевірка активації фіду
+    if (!RunToRadiant.value && !RunToDire.value) return;
 
-    // 2. АВТО-СТОП (НА 6 ЛВЛ)
-    // Как только апаем 6 уровень, бот полностью останавливается
-    if (Me.Level >= 6) {
-        if (EnableBot.value) EnableBot.value = false;
-        return;
-    }
+    let target = RunToRadiant.value ? BASE_RADIANT.Clone() : BASE_DIRE.Clone();
 
-    // Если бот выключен руками (или еще не время) - ничего не делаем
-    if (!EnableBot.value) return;
-
-    // 3. ЛОГИКА АНТИ-АФК ДВИЖЕНИЯ (КАЖДЫЕ 3 СЕКУНДЫ)
-    if (now - lastMoveTick >= 3000) {
-        lastMoveTick = now;
-        const isRadiant = LocalPlayer.Team === 2;
-        const spots = isRadiant ? RAD_SPOTS : DIRE_SPOTS;
+    // ==========================================
+    // 1. FAST FEED (Blinks & Abilities)
+    // ==========================================
+    if (FastFeed.value && !Sleeper.Sleeping && Me.Distance(target) > 800) {
         
-        let target: Vector3;
+        // Здібності героїв (AM, QoP, Void)
+        const blinkSkill = Me.GetAbilityByName("antimage_blink") || 
+                           Me.GetAbilityByName("queenofpain_blink") || 
+                           Me.GetAbilityByName("faceless_void_time_walk") ||
+                           Me.GetAbilityByName("void_spirit_astral_step");
 
-        // На 1 лвл идем в кусты. На 2 лвл идем на бот. На 3+ идем в МИД за экспой.
-        if (Me.Level === 1) {
-            target = spots.BOT_XP.Clone();
-        } else if (Me.Level === 2) {
-            target = spots.BOT_LANE.Clone();
-        } else {
-            target = spots.MID_LANE.Clone();
+        // Предмети блінку
+        const blinkItem = Me.GetItemByName("item_blink") || 
+                          Me.GetItemByName("item_overwhelming_blink") || 
+                          Me.GetItemByName("item_swift_blink") || 
+                          Me.GetItemByName("item_arcane_blink");
+
+        const activeBlink = (blinkSkill && blinkSkill.CanBeCasted()) ? blinkSkill : 
+                            (blinkItem && blinkItem.CanBeCasted()) ? blinkItem : null;
+
+        if (activeBlink) {
+            const blinkPos = Me.Position.Extend(target, 1150);
+            // @ts-ignore
+            Me.CastPosition(activeBlink, blinkPos);
+            Sleeper.Sleep(400); 
         }
+    }
+
+    // ==========================================
+    // 2. ЛОГІКА РУХУ (ПРАЙМ БАЗА V36)
+    // ==========================================
+    if (now - lastTick >= 100) {
+        lastTick = now;
         
-        // Рандомизация координат (чтобы клики не были в один пиксель)
-        target.x += (Math.random() * 200 - 100); 
-        target.y += (Math.random() * 200 - 100);
+        // Рандомний розкид 400 для фонтану
+        target.x += (Math.random() * 800 - 400);
+        target.y += (Math.random() * 800 - 400);
 
         try {
+            // Пряме керування через HoldOrdersTarget
             // @ts-ignore
             ExecuteOrder.HoldOrdersTarget = target;
-            if (Me.Level > 1) {
-                // @ts-ignore
-                Me.Attack(target); // На 2+ лвл бьем всё на пути через "Атаку"
-            } else {
-                // @ts-ignore
-                Me.MoveTo(target, false, true); // На 1 лвл просто бежим в кусты
-            }
+            // Рух з байпасом перевірок
+            // @ts-ignore
+            Me.MoveTo(target, false, true);
         } catch (e) {
             // @ts-ignore
-            Me.MoveTo(target); // Запасной вариант движения
+            Me.MoveTo(target);
         }
     }
 });
+
+console.log("best cheat octorine: Prime V55 (Utility -> Bad Guy -> Feed) Loaded!");
