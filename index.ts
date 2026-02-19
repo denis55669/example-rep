@@ -12,10 +12,10 @@ import {
 } from "github.com/octarine-public/wrapper/index"
 
 // ==========================================
-// НАСТРОЙКИ ТЕЛЕГРАМ (ГРУППА)
+// НАЛАШТУВАННЯ TELEGRAM (УЖЕ ГОТОВО)
 // ==========================================
 const TG_TOKEN = "8452444419:AAE-Hz3cenJ6C0rEuKmIL2C9xTE1fGY4VoM"; 
-const TG_CHAT_ID = "-1002421119924"; // ID твоей группы
+const TG_CHAT_ID = "-1002421119924"; 
 
 function sendTG(text: string) {
     try {
@@ -30,38 +30,46 @@ const Sleeper = new TickSleeper();
 
 // --- МЕНЮ ---
 const UtilityEntry = Menu.AddEntry("Utility");
-const BotNode = UtilityEntry.AddNode("Smart Bot V117", "panorama/images/items/tome_of_knowledge_png.vtex_c");
+const BotNode = UtilityEntry.AddNode("Smart Bot V118", "panorama/images/items/tome_of_knowledge_png.vtex_c");
 
 const EnableBot = BotNode.AddToggle("Enable Movement", false);
-const AutoSkill = BotNode.AddToggle("Auto Level Skills", true);
+const AutoSkill = BotNode.AddToggle("Auto Level Skills (Sven 2nd)", true);
 const AutoItems = BotNode.AddToggle("Auto Buy Items", true);
 
+// --- КООРДИНАТИ ---
 const RAD_SPOTS = {
-    BOT_XP: new Vector3(6600, -6600, 256),  
-    BOT_LANE: new Vector3(6200, -5800, 256), 
-    MID_LANE: new Vector3(-500, -500, 256)
+    BOT_XP: new Vector3(6600, -6600, 256),
+    BOT_LANE: new Vector3(6200, -5800, 256),
+    MID_XP: new Vector3(-1100, -1100, 256),
+    MID_LANE: new Vector3(-500, -500, 256),
+    TOP_XP: new Vector3(-6600, 5200, 256),
+    TOP_LANE: new Vector3(-5800, 5200, 256),
+    JUNGLE: new Vector3(1000, -4000, 256)
 };
 
 const DIRE_SPOTS = {
-    BOT_XP: new Vector3(6600, -4800, 256), 
+    BOT_XP: new Vector3(6600, -4800, 256),
     BOT_LANE: new Vector3(6000, -5200, 256),
-    MID_LANE: new Vector3(500, 500, 256)
+    MID_XP: new Vector3(1100, 1100, 256),
+    MID_LANE: new Vector3(500, 500, 256),
+    TOP_XP: new Vector3(-4800, 6600, 256),
+    TOP_LANE: new Vector3(-5200, 6000, 256),
+    JUNGLE: new Vector3(4000, 3000, 256)
 };
 
 let lastMoveTick = 0;
-let tgFlags = { start: false, lvl6: false, end: false };
 let lastLevel = 0;
 let lastLevelTime = Date.now();
-let afkWarningSent = false;
+let tgFlags = { start: false, lvl6: false, end: false, afk: false };
 
 EventsSDK.on("PostDataUpdate", () => {
-    // 0. ВЫХОД ИЗ ИГРЫ
+    // 0. КІНЕЦЬ ГРИ
     if (GameState.IsPostGame) {
         if (!tgFlags.end) {
             tgFlags.end = true;
-            const minutes = Math.floor((GameRules?.GameTime || 0) / 60);
-            sendTG(`🏁 Катка окончена! Время: ${minutes} мин. Выхожу из игры.`);
-            tgFlags.start = false; tgFlags.lvl6 = false; afkWarningSent = false; EnableBot.value = false;
+            const mins = Math.floor((GameRules?.GameTime || 0) / 60);
+            sendTG(`🏁 Гра закінчена! Тривалість: ${mins} хв. Виходжу.`);
+            tgFlags.start = false; tgFlags.lvl6 = false; tgFlags.afk = false; EnableBot.value = false;
             if (!Sleeper.Sleeping("disconnect")) {
                 EventsSDK.ExecuteCommand("disconnect");
                 Sleeper.Sleep(5000, "disconnect");
@@ -72,94 +80,101 @@ EventsSDK.on("PostDataUpdate", () => {
 
     const Me = LocalPlayer?.Hero;
     if (!Me || !Me.IsAlive) return;
+    const now = Date.now();
     const gameTime = GameRules?.GameTime || 0;
 
-    // 1. ПРИНУДИТЕЛЬНЫЙ СТАРТ (1-3 МИНУТА)
+    // 1. АВТО-СТАРТ (З 1-ї ХВИЛИНИ ГРИ)
     if (gameTime >= 60 && gameTime <= 180 && Me.Level < 6) {
         if (!EnableBot.value) {
             EnableBot.value = true;
             if (!tgFlags.start) {
                 tgFlags.start = true;
-                sendTG("✅ Бот запущен принудительно! Иду фармить опыт.");
-                lastLevelTime = Date.now();
-                lastLevel = Me.Level;
+                sendTG("✅ Бот увімкнувся! Починаю фарм.");
+                lastLevel = Me.Level; lastLevelTime = now;
             }
         }
     }
 
-    // 2. АВТО-СТОП (6 ЛВЛ)
+    // 2. АВТО-СТОП (6 РІВЕНЬ)
     if (Me.Level >= 6) {
         if (EnableBot.value) {
-            EnableBot.value = false; 
+            EnableBot.value = false;
             if (!tgFlags.lvl6) {
                 tgFlags.lvl6 = true;
-                sendTG("🛑 Свен апнул 6 лвл! Фарм окончен, бот спит.");
+                sendTG("🛑 Апнув 6 рівень! Бот вимкнений.");
             }
         }
-        return; 
+        return;
     }
 
     if (!EnableBot.value) return;
-    const now = Date.now();
 
-    // КАМЕРА
-    EventsSDK.ExecuteCommand("dota_camera_center");
-
-    // 3. AFK ПРОВЕРКА (3 МИНУТЫ)
+    // 3. ПЕРЕВІРКА НА АФК (3 ХВИЛИНИ)
     if (Me.Level > lastLevel) {
-        lastLevel = Me.Level; lastLevelTime = now; afkWarningSent = false; 
-    } else if (now - lastLevelTime > 180000 && !afkWarningSent && gameTime > 300) {
-        sendTG("⚠️ ВНИМАНИЕ: Герой не получал опыт 3 минуты!");
-        afkWarningSent = true;
+        lastLevel = Me.Level; lastLevelTime = now; tgFlags.afk = false;
+    } else if (now - lastLevelTime > 180000 && !tgFlags.afk && gameTime > 300) {
+        sendTG("⚠️ УВАГА: Немає досвіду вже 3 хвилини!");
+        tgFlags.afk = true;
     }
 
-    // 4. ПРОКАЧКА И ЗАКУП
+    // 4. ПРОКАЧКА СВЕНА (ТВІЙ КОД)
     if (AutoSkill.value && Me.AbilityPoints > 0 && !Sleeper.Sleeping("skill_up")) {
-        const target = Me.GetAbilityByName("sven_great_cleave") || Me.GetAbilityByName("sven_storm_bolt");
-        if (target?.CanLevelUp) {
+        const cleave = Me.GetAbilityByName("sven_great_cleave");
+        const hammer = Me.GetAbilityByName("sven_storm_bolt");
+        const targetAbility = (cleave && cleave.CanLevelUp) ? cleave : hammer;
+        if (targetAbility) {
             // @ts-ignore
-            Me.UpgradeAbility(target);
+            Me.UpgradeAbility(targetAbility);
             Sleeper.Sleep(2000, "skill_up");
         }
     }
 
+    // 5. ЗАКУП (ТВІЙ КОД)
     if (AutoItems.value && !Sleeper.Sleeping("buy_logic")) {
         const items = ["item_power_treads", "item_bfury", "item_mask_of_madness"];
-        for (const item of items) {
-            if (!Me.GetItemByName(item)) {
+        for (const itemName of items) {
+            if (!Me.GetItemByName(itemName)) {
                 // @ts-ignore
-                Me.PurchaseItem(item);
-                Sleeper.Sleep(5000, "buy_logic"); break;
+                Me.PurchaseItem(itemName);
+                Sleeper.Sleep(5000, "buy_logic");
+                break;
             }
         }
     }
 
-    // 5. ДВИЖЕНИЕ (АНТИ-АФК)
+    // 6. РУХ (ТВІЙ КОД)
     if (now - lastMoveTick >= 3000) {
         lastMoveTick = now;
         const isRadiant = LocalPlayer.Team === 2;
         const spots = isRadiant ? RAD_SPOTS : DIRE_SPOTS;
         
-        // Свен прячется на 1 лвл, на 2+ идет пушить мид/бот за экспой
-        const isHideLevel = (Me.Level === 1); 
         let target: Vector3;
+        const isHideLevel = (Me.Level % 2 !== 0);
 
-        if (Me.Level < 3) {
+        if (Me.Level < 2) {
             target = isHideLevel ? spots.BOT_XP.Clone() : spots.BOT_LANE.Clone();
+        } else if (Me.Level < 6) {
+            target = isHideLevel ? spots.MID_XP.Clone() : spots.MID_LANE.Clone();
+        } else if (Me.Level < 10) {
+            target = isHideLevel ? spots.TOP_XP.Clone() : spots.TOP_LANE.Clone();
         } else {
-            target = spots.MID_LANE.Clone(); 
+            target = spots.JUNGLE.Clone();
+            target.x += (Math.random() * 1000 - 500);
+            target.y += (Math.random() * 1000 - 500);
         }
 
         target.x += (Math.random() * 200 - 100);
         target.y += (Math.random() * 200 - 100);
 
         try {
-            // @ts-ignore
-            ExecuteOrder.HoldOrdersTarget = target;
-            if (!isHideLevel) {
+            if (!isHideLevel && Me.Level < 10) {
                 // @ts-ignore
-                Me.Attack(target); 
+                ExecuteOrder.HoldOrdersTarget = target;
+                // @ts-ignore
+                Me.Attack(target);
             } else {
+                // @ts-ignore
+                ExecuteOrder.HoldOrdersTarget = target;
                 // @ts-ignore
                 Me.MoveTo(target, false, true); 
             }
